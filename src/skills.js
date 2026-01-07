@@ -10,6 +10,7 @@ export const SkillType = {
   SHOCK: 'shock',
   WALK: 'walk',     // 서서 걸어가기 (좌우 넘어뜨림)
   FALLEN: 'fallen', // 넘어진 상태
+  ZIGZAG: 'zigzag', // 비틀비틀 (취한 것처럼)
 };
 
 /**
@@ -46,6 +47,11 @@ export const SkillConfig = {
     speedMultiplier: 0,
     message: (name) => `💥 ${name}: 넘어졌습니다!`,
   },
+  [SkillType.ZIGZAG]: {
+    duration: 150, // 2.5초
+    speedMultiplier: 0.8, // 80% 속도
+    message: (name) => `🍺 ${name}: 비틀비틀! 취했나?!`,
+  },
 };
 
 /**
@@ -57,15 +63,18 @@ export const SkillConfig = {
 export function triggerRandomSkill(name, addLog) {
   const r = Math.random();
 
-  if (r < 0.3) {
+  if (r < 0.25) {
     addLog(SkillConfig[SkillType.BOOST].message(name));
     return { skill: SkillType.BOOST, duration: SkillConfig[SkillType.BOOST].duration };
-  } else if (r < 0.5) {
+  } else if (r < 0.45) {
     addLog(SkillConfig[SkillType.STUN].message(name));
     return { skill: SkillType.STUN, duration: SkillConfig[SkillType.STUN].duration };
-  } else if (r < 0.7) {
+  } else if (r < 0.65) {
     addLog(SkillConfig[SkillType.BACK].message(name));
     return { skill: SkillType.BACK, duration: SkillConfig[SkillType.BACK].duration };
+  } else if (r < 0.85) {
+    addLog(SkillConfig[SkillType.ZIGZAG].message(name));
+    return { skill: SkillType.ZIGZAG, duration: SkillConfig[SkillType.ZIGZAG].duration };
   }
 
   return null;
@@ -89,6 +98,8 @@ export function calculateSkillSpeed(status, baseSpeed) {
       return 0;
     case SkillType.BACK:
       return SkillConfig[SkillType.BACK].speedMultiplier;
+    case SkillType.ZIGZAG:
+      return baseSpeed * SkillConfig[SkillType.ZIGZAG].speedMultiplier;
     default:
       return baseSpeed;
   }

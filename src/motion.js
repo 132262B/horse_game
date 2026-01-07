@@ -84,6 +84,13 @@ export const MotionConfig = {
     headBobAmplitude: 0.03, // 머리 미세하게 움직임
     headBobSpeed: 0.5,
   },
+  // 비틀비틀 애니메이션
+  zigzag: {
+    swayAmplitude: 30, // 좌우 흔들림 크기
+    swaySpeed: 2, // 흔들림 속도
+    bodyTiltAmplitude: 0.3, // 몸 기울기
+    headSwayAmplitude: 0.4, // 머리 흔들림
+  },
 };
 
 /**
@@ -275,6 +282,50 @@ export function updateIdleMotion(horse, time) {
 }
 
 /**
+ * 비틀비틀 모션 업데이트 (취한 것처럼 좌우로 흔들림)
+ * @param {Object} horse - 말 객체
+ * @param {number} time - 현재 시간
+ * @returns {number} 좌우 이동량 (충돌 체크용)
+ */
+export function updateZigzagMotion(horse, time) {
+  const { leg, body, zigzag, tail, ear } = MotionConfig;
+
+  // 좌우로 비틀거리며 이동 (사인파)
+  const swayOffset = Math.sin(time * zigzag.swaySpeed) * zigzag.swayAmplitude;
+
+  // 원래 X 위치 저장 (첫 호출 시)
+  if (horse.zigzagBaseX === undefined) {
+    horse.zigzagBaseX = horse.mesh.position.x;
+  }
+  horse.mesh.position.x = horse.zigzagBaseX + swayOffset;
+
+  // 몸 기울기 (이동 방향으로)
+  horse.mesh.rotation.z = Math.sin(time * zigzag.swaySpeed) * zigzag.bodyTiltAmplitude;
+
+  // 기본 높이 + 바운스
+  horse.mesh.position.y = 4 + Math.abs(Math.sin(time * body.bounceSpeed)) * body.bounceAmplitude;
+
+  // 다리 애니메이션 (달리기와 비슷하지만 약간 불규칙)
+  horse.legs[0].rotation.x = Math.sin(time * leg.speed * 0.8) * leg.amplitude;
+  horse.legs[1].rotation.x = Math.sin(time * leg.speed * 0.8 + Math.PI) * leg.amplitude;
+  horse.legs[2].rotation.x = Math.sin(time * leg.speed * 0.8 + Math.PI) * leg.amplitude;
+  horse.legs[3].rotation.x = Math.sin(time * leg.speed * 0.8) * leg.amplitude;
+
+  // 머리 흔들림 (취한 느낌)
+  horse.headGroup.rotation.x = Math.sin(time * 1.5) * 0.2;
+  horse.headGroup.rotation.z = Math.sin(time * zigzag.swaySpeed) * zigzag.headSwayAmplitude;
+
+  // 꼬리 흔들림
+  horse.tail.rotation.z = Math.sin(time * 3) * 0.5;
+
+  // 귀 팔랑거림
+  horse.earL.rotation.z = ear.baseRotationL + Math.sin(time * 5) * 0.15;
+  horse.earR.rotation.z = ear.baseRotationR + Math.sin(time * 5 + 1) * 0.15;
+
+  return swayOffset; // 충돌 체크용으로 반환
+}
+
+/**
  * 뒤로 가기 모션 업데이트
  * @param {Object} horse - 말 객체
  * @param {number} time - 현재 시간
@@ -313,7 +364,7 @@ export function updateBackMotion(horse, time) {
  */
 export function resetMotion(horse) {
   horse.mesh.rotation.set(0, 0, 0);
-  horse.mesh.position.y = 0;
+  horse.mesh.position.y = 4; // 기본 높이
   // 몸통 스케일 복구
   horse.body.scale.set(1, 1, 1);
   // 다리 복구
@@ -323,6 +374,11 @@ export function resetMotion(horse) {
   // 귀 복구
   horse.earL.rotation.z = MotionConfig.ear.baseRotationL;
   horse.earR.rotation.z = MotionConfig.ear.baseRotationR;
+  // zigzag 기준 위치 초기화
+  if (horse.zigzagBaseX !== undefined) {
+    horse.mesh.position.x = horse.zigzagBaseX;
+    delete horse.zigzagBaseX;
+  }
 }
 
 /**
@@ -346,6 +402,8 @@ export function updateMotion(horse, status, wobbleOffset) {
     updateWalkMotion(horse, time);
   } else if (status === SkillType.FALLEN) {
     updateFallenMotion(horse, time);
+  } else if (status === SkillType.ZIGZAG) {
+    updateZigzagMotion(horse, time);
   } else {
     // RUN, BOOST 상태에서는 정상 자세로 복구
     const currentZ = horse.mesh.rotation.z;

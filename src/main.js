@@ -1158,6 +1158,11 @@ class Horse3D {
       emitRunningDust(this);
     }
 
+    // ZIGZAG 충돌 체크
+    if (this.status === SkillType.ZIGZAG) {
+      checkZigzagCollision(this);
+    }
+
     // 방향 반전 시 180도 회전 (강제 적용)
     if (this.isReversed) {
       const currentRotY = this.mesh.rotation.y;
@@ -1291,6 +1296,35 @@ function knockdownAdjacentHorses(horse) {
         h.statusTimer = SkillConfig[SkillType.FALLEN].duration;
         addLog(SkillConfig[SkillType.FALLEN].message(h.name));
       }
+    }
+  });
+}
+
+/**
+ * ZIGZAG 충돌 체크 (비틀거리다 다른 말과 충돌하면 둘 다 넘어짐)
+ * @param {Horse3D} horse - ZIGZAG 상태인 말
+ */
+const COLLISION_FALL_DURATION = 90; // 1.5초
+
+function checkZigzagCollision(horse) {
+  if (horse.status !== SkillType.ZIGZAG) return;
+
+  horses.forEach((h) => {
+    if (h === horse || h.finished || h.status === SkillType.FALLEN) return;
+
+    // X, Z 좌표 기반 충돌 체크
+    const dx = Math.abs(h.mesh.position.x - horse.mesh.position.x);
+    const dz = Math.abs(h.mesh.position.z - horse.mesh.position.z);
+
+    // 충돌 범위 (X: 15, Z: 30)
+    if (dx < 15 && dz < 30) {
+      // 둘 다 넘어짐
+      horse.status = SkillType.FALLEN;
+      horse.statusTimer = COLLISION_FALL_DURATION;
+      h.status = SkillType.FALLEN;
+      h.statusTimer = COLLISION_FALL_DURATION;
+
+      addLog(`💥 ${horse.name}와(과) ${h.name} 충돌! 둘 다 넘어졌습니다!`);
     }
   });
 }

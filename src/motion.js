@@ -42,6 +42,11 @@ export const MotionConfig = {
     shakeSpeedZ: 6,
     bounceMax: 3,
   },
+  // 뒤로 가기 애니메이션
+  back: {
+    targetRotationY: Math.PI, // 180도 회전
+    rotationSpeed: 0.15, // 회전 속도 (lerp)
+  },
 };
 
 /**
@@ -90,6 +95,39 @@ export function updateShockMotion(horse, time) {
 }
 
 /**
+ * 뒤로 가기 모션 업데이트
+ * @param {Object} horse - 말 객체
+ * @param {number} time - 현재 시간
+ */
+export function updateBackMotion(horse, time) {
+  const { leg, body, head, tail, ear, back } = MotionConfig;
+
+  // 부드럽게 180도 회전 (뒤를 바라봄)
+  const currentY = horse.mesh.rotation.y;
+  horse.mesh.rotation.y += (back.targetRotationY - currentY) * back.rotationSpeed;
+
+  // 다리 애니메이션 (역방향으로 달리기)
+  horse.legs[0].rotation.x = Math.sin(time * leg.speed) * leg.amplitude * 0.7;
+  horse.legs[1].rotation.x = Math.sin(time * leg.speed + Math.PI) * leg.amplitude * 0.7;
+  horse.legs[2].rotation.x = Math.sin(time * leg.speed + Math.PI) * leg.amplitude * 0.7;
+  horse.legs[3].rotation.x = Math.sin(time * leg.speed) * leg.amplitude * 0.7;
+
+  // 몸 위아래 움직임 (약간 줄임)
+  horse.mesh.position.y = Math.abs(Math.sin(time * body.bounceSpeed)) * body.bounceAmplitude * 0.7;
+
+  // 머리 흔들림
+  horse.headGroup.rotation.x = Math.sin(time * head.nodSpeed) * head.nodAmplitude;
+
+  // 꼬리 흔들림
+  horse.tail.rotation.z = Math.sin(time * tail.swaySpeed) * tail.swayAmplitude;
+  horse.tail.rotation.x = tail.baseRotationX + Math.sin(time * tail.bobSpeed) * tail.bobAmplitude;
+
+  // 귀 팔랑거림
+  horse.earL.rotation.z = ear.baseRotationL + Math.sin(time * ear.flickSpeed) * ear.flickAmplitude;
+  horse.earR.rotation.z = ear.baseRotationR + Math.sin(time * ear.flickSpeed + 1) * ear.flickAmplitude;
+}
+
+/**
  * 모션 리셋
  * @param {Object} horse - 말 객체
  */
@@ -108,7 +146,14 @@ export function updateMotion(horse, status, wobbleOffset) {
 
   if (status === SkillType.SHOCK) {
     updateShockMotion(horse, time);
+  } else if (status === SkillType.BACK) {
+    updateBackMotion(horse, time);
   } else {
+    // RUN, BOOST, STUN 상태에서는 앞을 보도록 회전 복구
+    const currentY = horse.mesh.rotation.y;
+    if (Math.abs(currentY) > 0.01) {
+      horse.mesh.rotation.y += (0 - currentY) * MotionConfig.back.rotationSpeed;
+    }
     updateRunningMotion(horse, time);
   }
 }

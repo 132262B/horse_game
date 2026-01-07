@@ -73,6 +73,17 @@ export const MotionConfig = {
     targetPositionY: -8,
     rotationSpeed: 0.2,
   },
+  // 가만히 서있기 애니메이션
+  idle: {
+    breathAmplitude: 0.15, // 숨쉬기
+    breathSpeed: 0.8,
+    tailSwayAmplitude: 0.15, // 꼬리 살짝 흔들림
+    tailSwaySpeed: 1,
+    earFlickAmplitude: 0.05, // 귀 살짝 움직임
+    earFlickSpeed: 2,
+    headBobAmplitude: 0.03, // 머리 미세하게 움직임
+    headBobSpeed: 0.5,
+  },
 };
 
 /**
@@ -226,6 +237,36 @@ export function updateFallenMotion(horse, time) {
 }
 
 /**
+ * 가만히 서있기 모션 업데이트
+ * @param {Object} horse - 말 객체
+ * @param {number} time - 현재 시간
+ */
+export function updateIdleMotion(horse, time) {
+  const { idle, ear, tail } = MotionConfig;
+
+  // 숨쉬기 (몸통 미세하게 움직임)
+  const breathOffset = Math.sin(time * idle.breathSpeed) * idle.breathAmplitude;
+  horse.mesh.position.y = breathOffset;
+
+  // 다리는 가만히
+  horse.legs.forEach((leg) => {
+    leg.rotation.x += (0 - leg.rotation.x) * 0.1;
+  });
+
+  // 머리 미세하게 움직임
+  horse.headGroup.rotation.x = Math.sin(time * idle.headBobSpeed) * idle.headBobAmplitude;
+  horse.headGroup.rotation.z = Math.sin(time * idle.headBobSpeed * 0.7) * idle.headBobAmplitude * 0.5;
+
+  // 꼬리 살짝 흔들림
+  horse.tail.rotation.z = Math.sin(time * idle.tailSwaySpeed) * idle.tailSwayAmplitude;
+  horse.tail.rotation.x = tail.baseRotationX;
+
+  // 귀 가끔씩 움찔
+  horse.earL.rotation.z = ear.baseRotationL + Math.sin(time * idle.earFlickSpeed) * idle.earFlickAmplitude;
+  horse.earR.rotation.z = ear.baseRotationR + Math.sin(time * idle.earFlickSpeed + 2) * idle.earFlickAmplitude;
+}
+
+/**
  * 뒤로 가기 모션 업데이트
  * @param {Object} horse - 말 객체
  * @param {number} time - 현재 시간
@@ -285,7 +326,9 @@ export function resetMotion(horse) {
 export function updateMotion(horse, status, wobbleOffset) {
   const time = Date.now() * 0.015 + wobbleOffset;
 
-  if (status === SkillType.SHOCK) {
+  if (status === SkillType.IDLE) {
+    updateIdleMotion(horse, time);
+  } else if (status === SkillType.SHOCK) {
     updateShockMotion(horse, time);
   } else if (status === SkillType.BACK) {
     updateBackMotion(horse, time);

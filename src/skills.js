@@ -2,6 +2,7 @@
  * 스킬 타입 정의
  */
 export const SkillType = {
+  IDLE: 'idle',     // 가만히 서있기
   RUN: 'run',
   BOOST: 'boost',
   STUN: 'stun',

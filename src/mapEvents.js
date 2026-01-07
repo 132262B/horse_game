@@ -4,27 +4,38 @@
 export const MapEventType = {
   LIGHTNING: 'lightning',
   REVERSE_GOAL: 'reverse_goal', // 결승선 반전
+  OBSTACLE: 'obstacle', // 하늘에서 장애물 낙하
 };
 
 /**
  * 맵 이벤트 설정
  */
 export const MapEventConfig = {
-  [MapEventType.LIGHTNING]: {
-    name: '번개',
-    triggerCondition: 'halfway', // 'halfway', 'distance', 'time', 'random'
-    triggerValue: 0.5, // halfway = 50% 지점
-    targetCount: 3, // 영향 받는 말 수
-    message: '⚡⚡⚡ 하늘에서 번개가 내려옵니다!!!',
-    cameraDuration: 180, // 카메라 전환 시간 (3초)
-  },
-  [MapEventType.REVERSE_GOAL]: {
-    name: '결승선 반전',
-    triggerCondition: 'distance',
-    triggerValue: 3000, // 선두가 3000m 도달 시
-    message: '🔄🔄🔄 반전!! 결승선이 출발지로 이동합니다!!!',
-    cameraDuration: 180,
-    newFinishZ: 500, // 새 결승선 위치 (출발지 뒤쪽)
+  // [MapEventType.LIGHTNING]: {
+  //   name: '번개',
+  //   triggerCondition: 'halfway', // 'halfway', 'distance', 'time', 'random'
+  //   triggerValue: 0.5, // halfway = 50% 지점
+  //   targetCount: 3, // 영향 받는 말 수
+  //   message: '⚡⚡⚡ 하늘에서 번개가 내려옵니다!!!',
+  //   cameraDuration: 180, // 카메라 전환 시간 (3초)
+  // },
+  // [MapEventType.REVERSE_GOAL]: {
+  //   name: '결승선 반전',
+  //   triggerCondition: 'distance',
+  //   triggerValue: 3000, // 선두가 3000m 도달 시
+  //   message: '🔄🔄🔄 반전!! 결승선이 출발지로 이동합니다!!!',
+  //   cameraDuration: 180,
+  //   newFinishZ: 500, // 새 결승선 위치 (출발지 뒤쪽)
+  // },
+  [MapEventType.OBSTACLE]: {
+    name: '장애물 낙하',
+    triggerCondition: 'halfway',
+    triggerValue: 0.5,
+    message: '☄️☄️☄️ 하늘에서 장애물이 떨어집니다!!!',
+    cameraDuration: 240, // 4초
+    obstacleDistance: 200, // 말 앞 거리
+    fallHeight: 300, // 낙하 시작 높이
+    fallSpeed: 5, // 낙하 속도
   },
 };
 

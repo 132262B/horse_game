@@ -237,6 +237,219 @@ function executeReverseGoalEvent(config) {
   }, 200);
 }
 
+// --- 장애물 낙하 이벤트 ---
+let fallingObstacles = [];
+
+/**
+ * 장애물 모두 정리
+ */
+function clearObstacles() {
+  fallingObstacles.forEach(obj => {
+    scene.remove(obj);
+    if (obj.children) {
+      obj.children.forEach(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+    }
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
+  fallingObstacles = [];
+}
+
+/**
+ * 장애물 메시 생성 (바위 모양)
+ */
+function createObstacleMesh() {
+  const group = new THREE.Group();
+
+  // 바위 본체 (불규칙한 형태를 위해 여러 구 합성)
+  const rockColors = [0x8b7355, 0x6b5344, 0x7a6352, 0x5c4a3d];
+  const mainColor = rockColors[Math.floor(Math.random() * rockColors.length)];
+
+  // 메인 바위
+  const mainRock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(15 + Math.random() * 5, 1),
+    new THREE.MeshLambertMaterial({ color: mainColor })
+  );
+  mainRock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+  group.add(mainRock);
+
+  // 작은 돌기들
+  for (let i = 0; i < 4; i++) {
+    const bump = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(5 + Math.random() * 3, 0),
+      new THREE.MeshLambertMaterial({ color: mainColor })
+    );
+    bump.position.set(
+      (Math.random() - 0.5) * 15,
+      (Math.random() - 0.5) * 15,
+      (Math.random() - 0.5) * 15
+    );
+    group.add(bump);
+  }
+
+  return group;
+}
+
+/**
+ * 맵 이벤트: 장애물 낙하
+ */
+function executeObstacleEvent(config) {
+  const activeHorses = horses.filter(h => !h.finished);
+  if (activeHorses.length === 0) return;
+
+  // (참여수 / 2) - 1 개의 장애물 생성
+  const obstacleCount = Math.max(1, Math.floor(activeHorses.length / 2) - 1);
+
+  addLog(config.message);
+
+  // 반전 상태 확인
+  const isReversed = activeHorses.some(h => h.isReversed);
+
+  // 랜덤 말들 선택 (장애물이 떨어질 위치 기준)
+  const shuffled = [...activeHorses].sort(() => Math.random() - 0.5);
+  const targetHorses = shuffled.slice(0, obstacleCount);
+
+  targetHorses.forEach((horse, index) => {
+    setTimeout(() => {
+      const obstacle = createObstacleMesh();
+
+      // 말 앞쪽에 떨어짐 (반전 상태 고려)
+      const distanceAhead = config.obstacleDistance + Math.random() * 100;
+      const targetZ = isReversed
+        ? horse.mesh.position.z + distanceAhead
+        : horse.mesh.position.z - distanceAhead;
+
+      // X 위치는 말 위치 근처 (트랙 범위 내)
+      const targetX = horse.mesh.position.x + (Math.random() - 0.5) * 50;
+
+      obstacle.position.set(targetX, config.fallHeight, targetZ);
+      obstacle.userData.targetY = 15; // 착지 높이
+      obstacle.userData.fallSpeed = config.fallSpeed + Math.random() * 2;
+      obstacle.userData.landed = false;
+      obstacle.userData.rotation = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.2,
+        (Math.random() - 0.5) * 0.2,
+        (Math.random() - 0.5) * 0.2
+      );
+
+      scene.add(obstacle);
+      fallingObstacles.push(obstacle);
+    }, index * 200); // 순차적으로 떨어짐
+  });
+}
+
+/**
+ * 장애물 착지 시 모래먼지 이펙트
+ */
+function createObstacleDustEffect(position) {
+  const dustColors = [0xd2b48c, 0xc4a76c, 0xdeb887, 0xbc9a5c];
+
+  for (let i = 0; i < 15; i++) {
+    const geo = new THREE.SphereGeometry(3 + Math.random() * 2, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color: dustColors[Math.floor(Math.random() * dustColors.length)],
+      transparent: true,
+      opacity: 0.8,
+    });
+    const particle = new THREE.Mesh(geo, mat);
+
+    particle.position.copy(position);
+    particle.position.x += (Math.random() - 0.5) * 30;
+    particle.position.y = 5 + Math.random() * 10;
+    particle.position.z += (Math.random() - 0.5) * 30;
+
+    // 방사형으로 퍼짐
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 2;
+    particle.userData.velocity = new THREE.Vector3(
+      Math.cos(angle) * speed,
+      Math.random() * 2 + 1,
+      Math.sin(angle) * speed
+    );
+    particle.userData.life = 1.0;
+    particle.userData.decay = 0.02 + Math.random() * 0.01;
+
+    scene.add(particle);
+    fallingObstacles.push(particle); // 같은 배열에서 관리
+    particle.userData.isDust = true;
+  }
+}
+
+/**
+ * 장애물 업데이트 (낙하 애니메이션 + 충돌 체크)
+ */
+function updateObstacles() {
+  for (let i = fallingObstacles.length - 1; i >= 0; i--) {
+    const obj = fallingObstacles[i];
+
+    // 먼지 파티클 처리
+    if (obj.userData.isDust) {
+      obj.position.add(obj.userData.velocity);
+      obj.userData.velocity.y -= 0.05; // 중력
+      obj.userData.velocity.x *= 0.98;
+      obj.userData.velocity.z *= 0.98;
+
+      obj.userData.life -= obj.userData.decay;
+      obj.material.opacity = obj.userData.life * 0.8;
+
+      const scale = 1 + (1 - obj.userData.life) * 2;
+      obj.scale.set(scale, scale, scale);
+
+      if (obj.userData.life <= 0 || obj.position.y < 0) {
+        scene.remove(obj);
+        obj.geometry.dispose();
+        obj.material.dispose();
+        fallingObstacles.splice(i, 1);
+      }
+      continue;
+    }
+
+    // 장애물 낙하
+    if (!obj.userData.landed) {
+      // 회전하면서 낙하
+      obj.rotation.x += obj.userData.rotation.x;
+      obj.rotation.y += obj.userData.rotation.y;
+      obj.rotation.z += obj.userData.rotation.z;
+
+      // 낙하 (가속도)
+      obj.userData.fallSpeed += 0.3;
+      obj.position.y -= obj.userData.fallSpeed;
+
+      // 착지 체크
+      if (obj.position.y <= obj.userData.targetY) {
+        obj.position.y = obj.userData.targetY;
+        obj.userData.landed = true;
+
+        // 착지 먼지 이펙트
+        createObstacleDustEffect(obj.position);
+
+        // 화면 흔들림 효과
+        camera.position.y += 5;
+      }
+    }
+
+    // 충돌 체크 (착지된 장애물만)
+    if (obj.userData.landed) {
+      horses.forEach(horse => {
+        if (horse.finished || horse.status === SkillType.FALLEN) return;
+
+        const dx = horse.mesh.position.x - obj.position.x;
+        const dz = horse.mesh.position.z - obj.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        // 충돌 범위 (약 25)
+        if (dist < 25) {
+          horse.applyFallen();
+          addLog(`💥 ${horse.name} 장애물에 부딪혔습니다!`);
+        }
+      });
+    }
+  }
+}
+
 // 결승선 이동
 function moveFinishLine(newZ) {
   // 기존 결승선 객체 제거
@@ -303,6 +516,7 @@ function checkMapEvents() {
     mapEventManager.triggerRandomEvent({
       [MapEventType.LIGHTNING]: executeLightningEvent,
       [MapEventType.REVERSE_GOAL]: executeReverseGoalEvent,
+      [MapEventType.OBSTACLE]: executeObstacleEvent,
     });
   }
 }
@@ -893,6 +1107,13 @@ class Horse3D {
     addLog(`⚡ ${this.name} 번개에 맞았습니다!`);
   }
 
+  applyFallen() {
+    // 넘어짐 (장애물 충돌)
+    if (this.status === SkillType.FALLEN) return; // 이미 넘어진 상태면 무시
+    this.status = SkillType.FALLEN;
+    this.statusTimer = SkillConfig[SkillType.FALLEN].duration;
+  }
+
   reverseDirection() {
     // 이동 방향 반전
     this.isReversed = !this.isReversed;
@@ -1069,6 +1290,7 @@ function animate() {
   updateBoostEffects();
   updateLightningEffects();
   updateDustEffects();
+  updateObstacles();
 
   if (isRacing) {
     horses.forEach((h) => h.update());
@@ -1140,6 +1362,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
     raceStartFrame = frameCount; // 스킬 딜레이 계산용
     finishLineZ = ORIGINAL_FINISH_Z; // 결승선 위치 리셋
     mapEventManager.reset(); // 맵 이벤트 리셋
+    clearObstacles(); // 장애물 정리
     addLog(`📢 ${names.length}명 출발! 중간 지점에서 이벤트가 발생합니다!`);
   });
 });

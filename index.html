@@ -82,7 +82,7 @@
         </div>
 
         <div id="broadcast">
-            <div id="broadcast-text">중계석: 독주하면 벼락 맞습니다!</div>
+            <div id="broadcast-text">중계석: 경기 준비 중...</div>
         </div>
 
         <div id="rank-board">
@@ -93,5 +93,18 @@
     </div>
 
     <script type="module" src="/src/main.js"></script>
+    <script>
+        // 전체 페이지 드래그 드롭 방지 (input, textarea 제외)
+        document.addEventListener('dragover', function(e) {
+            if (!e.target.matches('input, textarea')) {
+                e.preventDefault();
+            }
+        });
+        document.addEventListener('drop', function(e) {
+            if (!e.target.matches('input, textarea')) {
+                e.preventDefault();
+            }
+        });
+    </script>
 </body>
 </html>

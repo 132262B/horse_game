@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed, applyShockPenalty } from './skills.js';
 import { updateMotion, resetMotion } from './motion.js';
-import { playThunder, playFirework, playCountSound } from './sound.js';
+import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound } from './sound.js';
 import { initEffects, updateBoostEffects, emitBoostFlame, updateDustEffects, emitRunningDust } from './effects.js';
 import { MapEventType, MapEventConfig, mapEventManager } from './mapEvents.js';
 
@@ -342,6 +342,57 @@ function executeObstacleEvent(config) {
 }
 
 /**
+ * 장애물 부서지는 이펙트
+ */
+function createObstacleBreakEffect(position) {
+  const rockColors = [0x8b7355, 0x6b5344, 0x7a6352, 0x5c4a3d];
+  const fragmentCount = 12;
+
+  for (let i = 0; i < fragmentCount; i++) {
+    // 작은 바위 조각
+    const size = 3 + Math.random() * 5;
+    const geo = new THREE.DodecahedronGeometry(size, 0);
+    const mat = new THREE.MeshLambertMaterial({
+      color: rockColors[Math.floor(Math.random() * rockColors.length)],
+      transparent: true,
+      opacity: 1,
+    });
+    const fragment = new THREE.Mesh(geo, mat);
+
+    fragment.position.copy(position);
+    fragment.rotation.set(
+      Math.random() * Math.PI,
+      Math.random() * Math.PI,
+      Math.random() * Math.PI
+    );
+
+    // 방사형으로 튀어나감
+    const angle = Math.random() * Math.PI * 2;
+    const upAngle = Math.random() * Math.PI * 0.5;
+    const speed = 3 + Math.random() * 4;
+    fragment.userData.velocity = new THREE.Vector3(
+      Math.cos(angle) * Math.cos(upAngle) * speed,
+      Math.sin(upAngle) * speed + 2,
+      Math.sin(angle) * Math.cos(upAngle) * speed
+    );
+    fragment.userData.rotationSpeed = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3
+    );
+    fragment.userData.life = 1.0;
+    fragment.userData.decay = 0.015 + Math.random() * 0.01;
+    fragment.userData.isFragment = true;
+
+    scene.add(fragment);
+    fallingObstacles.push(fragment);
+  }
+
+  // 먼지 이펙트도 함께 발생
+  createObstacleDustEffect(position);
+}
+
+/**
  * 장애물 착지 시 모래먼지 이펙트
  */
 function createObstacleDustEffect(position) {
@@ -407,6 +458,26 @@ function updateObstacles() {
       continue;
     }
 
+    // 바위 조각 파티클 처리
+    if (obj.userData.isFragment) {
+      obj.position.add(obj.userData.velocity);
+      obj.userData.velocity.y -= 0.15; // 중력
+      obj.rotation.x += obj.userData.rotationSpeed.x;
+      obj.rotation.y += obj.userData.rotationSpeed.y;
+      obj.rotation.z += obj.userData.rotationSpeed.z;
+
+      obj.userData.life -= obj.userData.decay;
+      obj.material.opacity = obj.userData.life;
+
+      if (obj.userData.life <= 0 || obj.position.y < -10) {
+        scene.remove(obj);
+        obj.geometry.dispose();
+        obj.material.dispose();
+        fallingObstacles.splice(i, 1);
+      }
+      continue;
+    }
+
     // 장애물 낙하
     if (!obj.userData.landed) {
       // 회전하면서 낙하
@@ -426,6 +497,9 @@ function updateObstacles() {
         // 착지 먼지 이펙트
         createObstacleDustEffect(obj.position);
 
+        // 착지 소리
+        playRockLandSound();
+
         // 화면 흔들림 효과
         camera.position.y += 5;
       }
@@ -433,8 +507,10 @@ function updateObstacles() {
 
     // 충돌 체크 (착지된 장애물만)
     if (obj.userData.landed) {
+      let collided = false;
+
       horses.forEach(horse => {
-        if (horse.finished || horse.status === SkillType.FALLEN) return;
+        if (horse.finished || horse.status === SkillType.FALLEN || collided) return;
 
         const dx = horse.mesh.position.x - obj.position.x;
         const dz = horse.mesh.position.z - obj.position.z;
@@ -444,8 +520,23 @@ function updateObstacles() {
         if (dist < 25) {
           horse.applyFallen();
           addLog(`💥 ${horse.name} 장애물에 부딪혔습니다!`);
+          collided = true;
         }
       });
+
+      // 충돌 시 장애물 부서짐
+      if (collided) {
+        createObstacleBreakEffect(obj.position.clone());
+        playRockBreakSound();
+
+        // 장애물 제거
+        obj.children.forEach(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        });
+        scene.remove(obj);
+        fallingObstacles.splice(i, 1);
+      }
     }
   }
 }
@@ -1066,6 +1157,10 @@ class Horse3D {
           this.status = result.skill;
           this.statusTimer = result.duration;
           this.skillCooldown = 90; // 1.5초 쿨다운
+          // 부스트 스킬이면 불꽃 소리
+          if (result.skill === SkillType.BOOST) {
+            playBoostSound();
+          }
         }
       }
     }
@@ -1295,6 +1390,16 @@ function animate() {
   if (isRacing) {
     horses.forEach((h) => h.update());
     updateSystem();
+
+    // 발굽 소리 (부하 최소화: 랜덤으로 달리는 말 중 1마리만)
+    if (frameCount % 8 === 0) { // 8프레임마다 체크
+      const runningHorses = horses.filter(h =>
+        !h.finished && (h.status === SkillType.RUN || h.status === SkillType.BOOST)
+      );
+      if (runningHorses.length > 0 && Math.random() < 0.5) {
+        playHoofSound(0.06); // 볼륨 낮게
+      }
+    }
   }
   renderer.render(scene, camera);
 }

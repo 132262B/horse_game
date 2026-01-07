@@ -56,6 +56,23 @@ export const MotionConfig = {
     breathSpeed: 0.5, // 숨쉬기 속도
     legFold: -0.5, // 다리 접기
   },
+  // 서서 걸어가기 애니메이션 (사람처럼 직립 - 뒷발로 서기)
+  walk: {
+    targetRotationX: Math.PI / 3, // 앞으로 들어서 뒷발로 직립 (60도)
+    targetPositionY: 20, // 높이 올라감
+    rotationSpeed: 0.12,
+    backLegSpeed: 3, // 뒷다리 걷기 속도
+    backLegAmplitude: 0.4,
+    frontLegWave: 0.8, // 앞다리 흔들기
+    frontLegSpeed: 5,
+    headBob: 0.3, // 머리 까딱
+  },
+  // 넘어지기 애니메이션
+  fallen: {
+    targetRotationX: Math.PI / 3, // 앞으로 고꾸라짐
+    targetPositionY: -8,
+    rotationSpeed: 0.2,
+  },
 };
 
 /**
@@ -144,6 +161,71 @@ export function updateStunMotion(horse, time) {
 }
 
 /**
+ * 서서 걸어가기 모션 업데이트 (뒷발로 직립 보행)
+ * @param {Object} horse - 말 객체
+ * @param {number} time - 현재 시간
+ */
+export function updateWalkMotion(horse, time) {
+  const { walk } = MotionConfig;
+
+  // 몸을 앞으로 들어서 뒷발로 직립
+  const currentRotX = horse.mesh.rotation.x;
+  horse.mesh.rotation.x += (walk.targetRotationX - currentRotX) * walk.rotationSpeed;
+
+  // 높이 올라감
+  const currentY = horse.mesh.position.y;
+  horse.mesh.position.y += (walk.targetPositionY - currentY) * walk.rotationSpeed;
+
+  // 뒷다리(legs 0,1)로 걷기 - 아래로 뻗어서 지탱
+  horse.legs[0].rotation.x = -0.8 + Math.sin(time * walk.backLegSpeed) * walk.backLegAmplitude;
+  horse.legs[1].rotation.x = -0.8 + Math.sin(time * walk.backLegSpeed + Math.PI) * walk.backLegAmplitude;
+
+  // 앞다리(legs 2,3) 위로 들고 허우적
+  horse.legs[2].rotation.x = -1.5 + Math.sin(time * walk.frontLegSpeed) * walk.frontLegWave;
+  horse.legs[3].rotation.x = -1.5 + Math.sin(time * walk.frontLegSpeed + Math.PI) * walk.frontLegWave;
+
+  // 머리 위로 들고 까딱까딱
+  horse.headGroup.rotation.x = -0.5 + Math.sin(time * 4) * walk.headBob;
+  horse.headGroup.rotation.z = Math.sin(time * 2) * 0.2;
+
+  // 꼬리 위로 세우고 흔들기
+  horse.tail.rotation.x = 1.5;
+  horse.tail.rotation.z = Math.sin(time * 3) * 0.5;
+
+  // 귀 팔랑팔랑 (신남)
+  horse.earL.rotation.z = -0.5 + Math.sin(time * 6) * 0.3;
+  horse.earR.rotation.z = 0.5 + Math.sin(time * 6 + 1) * 0.3;
+}
+
+/**
+ * 넘어지기 모션 업데이트
+ * @param {Object} horse - 말 객체
+ * @param {number} time - 현재 시간
+ */
+export function updateFallenMotion(horse, time) {
+  const { fallen } = MotionConfig;
+
+  // 앞으로 고꾸라짐
+  const currentX = horse.mesh.rotation.x;
+  horse.mesh.rotation.x += (fallen.targetRotationX - currentX) * fallen.rotationSpeed;
+
+  // 바닥으로 내려감
+  const currentY = horse.mesh.position.y;
+  horse.mesh.position.y += (fallen.targetPositionY - currentY) * fallen.rotationSpeed;
+
+  // 다리 앞으로 뻗기
+  horse.legs.forEach((leg, i) => {
+    leg.rotation.x += (0.8 - leg.rotation.x) * 0.15;
+  });
+
+  // 머리 숙이기
+  horse.headGroup.rotation.x += (0.5 - horse.headGroup.rotation.x) * 0.1;
+
+  // 꼬리 늘어뜨리기
+  horse.tail.rotation.x += (1.2 - horse.tail.rotation.x) * 0.1;
+}
+
+/**
  * 뒤로 가기 모션 업데이트
  * @param {Object} horse - 말 객체
  * @param {number} time - 현재 시간
@@ -209,10 +291,15 @@ export function updateMotion(horse, status, wobbleOffset) {
     updateBackMotion(horse, time);
   } else if (status === SkillType.STUN) {
     updateStunMotion(horse, time);
+  } else if (status === SkillType.WALK) {
+    updateWalkMotion(horse, time);
+  } else if (status === SkillType.FALLEN) {
+    updateFallenMotion(horse, time);
   } else {
     // RUN, BOOST 상태에서는 정상 자세로 복구
     const currentY = horse.mesh.rotation.y;
     const currentZ = horse.mesh.rotation.z;
+    const currentX = horse.mesh.rotation.x;
 
     // Y축 회전 복구 (뒤로 가기에서 복구)
     if (Math.abs(currentY) > 0.01) {
@@ -222,6 +309,11 @@ export function updateMotion(horse, status, wobbleOffset) {
     // Z축 회전 복구 (눕기에서 복구)
     if (Math.abs(currentZ) > 0.01) {
       horse.mesh.rotation.z += (0 - currentZ) * MotionConfig.stun.rotationSpeed;
+    }
+
+    // X축 회전 복구 (넘어지기에서 복구)
+    if (Math.abs(currentX) > 0.01) {
+      horse.mesh.rotation.x += (0 - currentX) * MotionConfig.fallen.rotationSpeed;
     }
 
     // 몸통 스케일 복구

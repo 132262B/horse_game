@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SkillType, triggerRandomSkill, calculateSkillSpeed, applyShockPenalty } from './skills.js';
+import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed, applyShockPenalty } from './skills.js';
 import { updateMotion, resetMotion } from './motion.js';
 import { playThunder, playFirework, playCountSound } from './sound.js';
 import { initEffects, updateBoostEffects, emitBoostFlame } from './effects.js';
@@ -9,13 +9,18 @@ let horses = [];
 let isRacing = false;
 
 const finishLineZ = -3500;
-const PENALTY_THRESHOLD = 400;
+const HALFWAY_Z = finishLineZ / 2; // 중간 지점
+let mapSkillTriggered = false; // 맵 스킬 발동 여부
+let mapSkillCameraTimer = 0; // 맵 스킬 카메라 지속 시간
 
 let frameCount = 0;
 let finishedCount = 0;
 let cameraMode = 0;
 let lastCameraChange = 0; // 마지막 카메라 변경 시점
 const CAMERA_COOLDOWN = 120; // 카메라 변경 쿨다운 (약 2초)
+let cameraTarget = new THREE.Vector3(0, 10, -100); // 카메라가 바라보는 위치 (lerp용)
+let raceStartFrame = 0; // 레이스 시작 프레임
+const SKILL_DELAY = 180; // 스킬 사용 가능까지 딜레이 (3초 = 180프레임)
 
 const colors = [0xff6b6b, 0x4caf50, 0x5d5dff, 0xffa040, 0x8e5b4b, 0xcccccc, 0x00bcd4, 0x9c27b0];
 
@@ -82,6 +87,128 @@ function celebrateWinner(position) {
   setTimeout(() => createFirework(new THREE.Vector3(position.x + 50, 0, position.z)), 500);
   setTimeout(() => createFirework(new THREE.Vector3(position.x, 0, position.z - 30)), 700);
   setTimeout(() => createFirework(new THREE.Vector3(position.x + 30, 0, position.z + 30)), 900);
+}
+
+// --- 번개 이펙트 ---
+let lightningBolts = [];
+
+function createLightningBolt(targetPos) {
+  const boltGroup = new THREE.Group();
+
+  // 번개 시작점 (하늘 위)
+  const startY = 300;
+  const endY = targetPos.y + 30;
+
+  // 지그재그 번개 생성
+  const segments = 8;
+  const points = [];
+  points.push(new THREE.Vector3(targetPos.x, startY, targetPos.z));
+
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const y = startY - (startY - endY) * t;
+    const offsetX = (Math.random() - 0.5) * 40;
+    const offsetZ = (Math.random() - 0.5) * 40;
+    points.push(new THREE.Vector3(targetPos.x + offsetX, y, targetPos.z + offsetZ));
+  }
+  points.push(new THREE.Vector3(targetPos.x, endY, targetPos.z));
+
+  // 메인 번개
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tubeGeo = new THREE.TubeGeometry(curve, 20, 2, 8, false);
+  const tubeMat = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 1
+  });
+  const mainBolt = new THREE.Mesh(tubeGeo, tubeMat);
+  boltGroup.add(mainBolt);
+
+  // 글로우 효과
+  const glowGeo = new THREE.TubeGeometry(curve, 20, 6, 8, false);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0xaaaaff,
+    transparent: true,
+    opacity: 0.5
+  });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  boltGroup.add(glow);
+
+  // 충격파 (바닥)
+  const ringGeo = new THREE.RingGeometry(5, 30, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(targetPos.x, 1, targetPos.z);
+  boltGroup.add(ring);
+
+  boltGroup.userData.life = 1.0;
+  boltGroup.userData.ring = ring;
+
+  scene.add(boltGroup);
+  lightningBolts.push(boltGroup);
+
+  // 화면 플래시
+  const flash = document.getElementById('flash-overlay');
+  flash.style.opacity = 0.8;
+  setTimeout(() => (flash.style.opacity = 0), 100);
+}
+
+function updateLightningEffects() {
+  for (let i = lightningBolts.length - 1; i >= 0; i--) {
+    const bolt = lightningBolts[i];
+    bolt.userData.life -= 0.05;
+
+    // 페이드 아웃
+    bolt.children.forEach(child => {
+      if (child.material) {
+        child.material.opacity = bolt.userData.life;
+      }
+    });
+
+    // 충격파 확장
+    if (bolt.userData.ring) {
+      bolt.userData.ring.scale.x += 0.3;
+      bolt.userData.ring.scale.y += 0.3;
+    }
+
+    if (bolt.userData.life <= 0) {
+      bolt.children.forEach(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      });
+      scene.remove(bolt);
+      lightningBolts.splice(i, 1);
+    }
+  }
+}
+
+// 맵 스킬: 랜덤 번개 3개
+function triggerMapLightning() {
+  const activeHorses = horses.filter(h => !h.finished);
+  if (activeHorses.length < 3) return;
+
+  // 랜덤으로 3마리 선택
+  const shuffled = [...activeHorses].sort(() => Math.random() - 0.5);
+  const targets = shuffled.slice(0, 3);
+
+  addLog('⚡⚡⚡ 하늘에서 번개가 내려옵니다!!!');
+
+  // 맵 스킬 카메라 활성화 (3초)
+  mapSkillCameraTimer = 180;
+
+  targets.forEach((horse, index) => {
+    setTimeout(() => {
+      createLightningBolt(horse.mesh.position.clone());
+      horse.applyLightningStrike();
+      playThunder();
+    }, index * 300);
+  });
 }
 
 // --- 구름 배열 ---
@@ -540,6 +667,9 @@ class Horse3D {
     this.statusTimer = 0;
     this.wobbleOffset = Math.random() * 100;
     this.rank = 0;
+    this.walkUsed = false; // WALK 스킬 사용 여부 (1회만 사용 가능)
+    this.laneIndex = index; // 레인 인덱스 저장 (좌우 말 찾기용)
+    this.skillCooldown = 0; // 스킬 쿨다운 (1.5초 = 90프레임)
   }
 
   update() {
@@ -580,12 +710,31 @@ class Horse3D {
 
     this.mesh.position.z -= currentSpeed;
 
-    // 랜덤 스킬 발동 (모듈 사용)
-    if (this.status === SkillType.RUN && Math.random() < 0.0015) {
-      const result = triggerRandomSkill(this.name, addLog);
-      if (result) {
-        this.status = result.skill;
-        this.statusTimer = result.duration;
+    // 스킬 쿨다운 감소 (RUN 상태일 때만)
+    if (this.skillCooldown > 0 && this.status === SkillType.RUN) this.skillCooldown--;
+
+    // 랜덤 스킬 발동 (3초 후부터 가능, 쿨다운 체크)
+    const skillAvailable = frameCount - raceStartFrame >= SKILL_DELAY;
+    const canUseSkill = this.status === SkillType.RUN && skillAvailable && this.skillCooldown <= 0;
+
+    if (canUseSkill && Math.random() < 0.0015) {
+      // WALK 스킬 발동 (미사용 시 10% 확률)
+      if (!this.walkUsed && Math.random() < 0.1) {
+        this.walkUsed = true;
+        this.status = SkillType.WALK;
+        this.statusTimer = SkillConfig[SkillType.WALK].duration;
+        this.skillCooldown = 90; // 1.5초 쿨다운
+        addLog(SkillConfig[SkillType.WALK].message(this.name));
+        // 좌우 말 넘어뜨리기
+        knockdownAdjacentHorses(this);
+      } else {
+        // 일반 스킬 발동
+        const result = triggerRandomSkill(this.name, addLog);
+        if (result) {
+          this.status = result.skill;
+          this.statusTimer = result.duration;
+          this.skillCooldown = 90; // 1.5초 쿨다운
+        }
       }
     }
 
@@ -610,28 +759,48 @@ class Horse3D {
     }
   }
 
-  applyPenalty() {
-    // 패널티 적용 (모듈 사용)
-    const result = applyShockPenalty(this.name, addLog);
-    this.status = result.skill;
-    this.statusTimer = result.duration;
+  applyLightningStrike() {
+    // 번개 맞음
+    this.status = SkillType.SHOCK;
+    this.statusTimer = SkillConfig[SkillType.SHOCK].duration;
 
     this.bodyMat.color.setHex(0x000000);
     this.headMat.color.setHex(0x333333);
 
-    const flash = document.getElementById('flash-overlay');
-    flash.style.opacity = 1;
-    setTimeout(() => (flash.style.opacity = 0), 100);
-
-    playThunder();
+    addLog(`⚡ ${this.name} 번개에 맞았습니다!`);
   }
 
   resetStatus() {
     this.status = SkillType.RUN;
     this.bodyMat.color.setHex(this.originalColor);
     this.headMat.color.setHex(this.originalColor);
+    this.skillCooldown = 90; // 스킬 종료 후 1.5초 쿨다운
     resetMotion(this);
   }
+}
+
+/**
+ * 좌우 인접한 말들을 넘어뜨림
+ * @param {Horse3D} horse - WALK 스킬을 사용한 말
+ */
+function knockdownAdjacentHorses(horse) {
+  const laneIndex = horse.laneIndex;
+
+  horses.forEach((h) => {
+    if (h === horse || h.finished) return;
+
+    // 좌우 레인에 있는 말인지 확인
+    if (h.laneIndex === laneIndex - 1 || h.laneIndex === laneIndex + 1) {
+      // 비슷한 위치에 있는지 확인 (앞뒤 50m 이내)
+      const distZ = Math.abs(h.mesh.position.z - horse.mesh.position.z);
+      if (distZ < 50) {
+        // 넘어뜨리기
+        h.status = SkillType.FALLEN;
+        h.statusTimer = SkillConfig[SkillType.FALLEN].duration;
+        addLog(SkillConfig[SkillType.FALLEN].message(h.name));
+      }
+    }
+  });
 }
 
 function updateSystem() {
@@ -656,9 +825,14 @@ function updateSystem() {
     let gap = Math.abs(second.mesh.position.z - leader.mesh.position.z);
     document.getElementById('gapLabel').innerText = `2등과의 격차: ${Math.floor(gap)}m`;
     document.getElementById('gapLabel').style.color = gap > 300 ? '#ff4757' : 'white';
+  }
 
-    if (gap > PENALTY_THRESHOLD && leader.status === SkillType.RUN) {
-      leader.applyPenalty();
+  // 맵 스킬: 모든 말이 절반 이상 지나면 번개 발동
+  if (!mapSkillTriggered) {
+    const allPastHalfway = horses.every(h => h.mesh.position.z <= HALFWAY_Z || h.finished);
+    if (allPastHalfway) {
+      mapSkillTriggered = true;
+      triggerMapLightning();
     }
   }
 
@@ -668,51 +842,64 @@ function updateSystem() {
 
   const targetPos = leader.mesh.position.clone();
 
-  if (dist <= 500 && dist > 0) {
-    const desiredPos = new THREE.Vector3(400, 80, finishLineZ + 50);
-    camera.position.lerp(desiredPos, 0.03);
-    camera.lookAt(new THREE.Vector3(0, 20, finishLineZ));
-    return;
-  }
+  // 맵 스킬 카메라 타이머 감소
+  if (mapSkillCameraTimer > 0) mapSkillCameraTimer--;
 
-  // 카메라 모드 변경 (쿨다운 적용)
-  const timeSinceLastChange = frameCount - lastCameraChange;
-  if (frameCount % 350 === 0 && timeSinceLastChange >= CAMERA_COOLDOWN) {
-    cameraMode = (cameraMode + 1) % 6;
-    lastCameraChange = frameCount;
-  }
-
-  // 기본 카메라 위치 (현재 모드에 따라)
+  // 카메라 위치와 타겟 결정
   let desiredPos;
-  switch (cameraMode) {
-    case 0:
-      desiredPos = new THREE.Vector3(0, 60, targetPos.z + 150);
-      camera.lookAt(new THREE.Vector3(0, 10, targetPos.z - 50));
-      break;
-    case 1:
-    case 4:
-      desiredPos = new THREE.Vector3(0, 300, targetPos.z + 100);
-      camera.lookAt(new THREE.Vector3(0, 0, targetPos.z));
-      break;
-    case 2:
-    case 5:
-      desiredPos = new THREE.Vector3(currentTrackWidth + 100, 60, targetPos.z);
-      camera.lookAt(new THREE.Vector3(0, 10, targetPos.z));
-      break;
-    case 3:
-      desiredPos = new THREE.Vector3(targetPos.x + 40, 30, targetPos.z + 60);
-      camera.lookAt(targetPos);
-      break;
+  let desiredTarget;
+
+  // 결승선 근처 (우선순위 최고)
+  if (dist <= 500 && dist > 0) {
+    desiredPos = new THREE.Vector3(400, 80, finishLineZ + 50);
+    desiredTarget = new THREE.Vector3(0, 20, finishLineZ);
+  }
+  // 맵 스킬 발동 중 (전체 조감도)
+  else if (mapSkillCameraTimer > 0) {
+    // 모든 말의 중심점 계산
+    const activeHorses = horses.filter(h => !h.finished);
+    let centerZ = 0;
+    activeHorses.forEach(h => centerZ += h.mesh.position.z);
+    centerZ /= activeHorses.length;
+
+    desiredPos = new THREE.Vector3(0, 350, centerZ + 250);
+    desiredTarget = new THREE.Vector3(0, 0, centerZ);
+  }
+  // 일반 카메라 모드
+  else {
+    // 카메라 모드 변경 (쿨다운 적용)
+    const timeSinceLastChange = frameCount - lastCameraChange;
+    if (frameCount % 350 === 0 && timeSinceLastChange >= CAMERA_COOLDOWN) {
+      cameraMode = (cameraMode + 1) % 6;
+      lastCameraChange = frameCount;
+    }
+
+    switch (cameraMode) {
+      case 0:
+        desiredPos = new THREE.Vector3(0, 60, targetPos.z + 150);
+        desiredTarget = new THREE.Vector3(0, 10, targetPos.z - 50);
+        break;
+      case 1:
+      case 4:
+        desiredPos = new THREE.Vector3(0, 300, targetPos.z + 100);
+        desiredTarget = new THREE.Vector3(0, 0, targetPos.z);
+        break;
+      case 2:
+      case 5:
+        desiredPos = new THREE.Vector3(currentTrackWidth + 100, 60, targetPos.z);
+        desiredTarget = new THREE.Vector3(0, 10, targetPos.z);
+        break;
+      case 3:
+        desiredPos = new THREE.Vector3(targetPos.x + 40, 30, targetPos.z + 60);
+        desiredTarget = targetPos.clone();
+        break;
+    }
   }
 
-  // 벼락 맞으면 가까이서 보여주기 (쿨다운 적용)
-  if (leader.status === SkillType.SHOCK && timeSinceLastChange >= CAMERA_COOLDOWN) {
-    desiredPos = new THREE.Vector3(targetPos.x + 30, 20, targetPos.z + 40);
-    camera.lookAt(targetPos);
-    lastCameraChange = frameCount;
-  }
-
+  // 카메라 위치와 타겟 모두 부드럽게 전환
   camera.position.lerp(desiredPos, 0.04);
+  cameraTarget.lerp(desiredTarget, 0.04);
+  camera.lookAt(cameraTarget);
 }
 
 function addLog(msg) {
@@ -737,6 +924,7 @@ function animate() {
   updateClouds();
   updateFireworks();
   updateBoostEffects();
+  updateLightningEffects();
 
   if (isRacing) {
     horses.forEach((h) => h.update());
@@ -805,7 +993,9 @@ document.getElementById('startBtn').addEventListener('click', () => {
   startCountdown(() => {
     document.getElementById('broadcast').style.display = 'block';
     isRacing = true;
-    addLog(`📢 ${names.length}명 출발! 독주하면 위험합니다!`);
+    raceStartFrame = frameCount; // 스킬 딜레이 계산용
+    mapSkillTriggered = false; // 맵 스킬 리셋
+    addLog(`📢 ${names.length}명 출발! 중간 지점에서 번개가 내려옵니다!`);
   });
 });
 

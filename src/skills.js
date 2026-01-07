@@ -7,6 +7,8 @@ export const SkillType = {
   STUN: 'stun',
   BACK: 'back',
   SHOCK: 'shock',
+  WALK: 'walk',     // 서서 걸어가기 (좌우 넘어뜨림)
+  FALLEN: 'fallen', // 넘어진 상태
 };
 
 /**
@@ -32,6 +34,16 @@ export const SkillConfig = {
     duration: 300,
     speedMultiplier: 0,
     message: (name) => `⚡ 쾅!!! ${name} 선수, 독주하다 벼락 맞았습니다!!`,
+  },
+  [SkillType.WALK]: {
+    duration: 80,
+    speedMultiplier: 2.5,
+    message: (name) => `🚶 ${name}: 위협의 행진! 좌우를 밀어붙입니다!`,
+  },
+  [SkillType.FALLEN]: {
+    duration: 60, // 1초
+    speedMultiplier: 0,
+    message: (name) => `💥 ${name}: 넘어졌습니다!`,
   },
 };
 
@@ -68,8 +80,11 @@ export function calculateSkillSpeed(status, baseSpeed) {
   switch (status) {
     case SkillType.BOOST:
       return baseSpeed * SkillConfig[SkillType.BOOST].speedMultiplier;
+    case SkillType.WALK:
+      return SkillConfig[SkillType.WALK].speedMultiplier;
     case SkillType.STUN:
     case SkillType.SHOCK:
+    case SkillType.FALLEN:
       return 0;
     case SkillType.BACK:
       return SkillConfig[SkillType.BACK].speedMultiplier;

@@ -297,13 +297,15 @@ export function updateMotion(horse, status, wobbleOffset) {
     updateFallenMotion(horse, time);
   } else {
     // RUN, BOOST 상태에서는 정상 자세로 복구
-    const currentY = horse.mesh.rotation.y;
     const currentZ = horse.mesh.rotation.z;
     const currentX = horse.mesh.rotation.x;
 
-    // Y축 회전 복구 (뒤로 가기에서 복구)
-    if (Math.abs(currentY) > 0.01) {
-      horse.mesh.rotation.y += (0 - currentY) * MotionConfig.back.rotationSpeed;
+    // Y축 회전 복구 (반전 상태가 아닐 때만)
+    if (!horse.isReversed) {
+      const currentY = horse.mesh.rotation.y;
+      if (Math.abs(currentY) > 0.01) {
+        horse.mesh.rotation.y += (0 - currentY) * MotionConfig.back.rotationSpeed;
+      }
     }
 
     // Z축 회전 복구 (눕기에서 복구)

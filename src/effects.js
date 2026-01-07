@@ -4,6 +4,7 @@ import * as THREE from 'three';
  * 불꽃 파티클 관리
  */
 let boostParticles = [];
+let dustParticles = [];
 let scene = null;
 
 /**
@@ -103,6 +104,87 @@ export function emitBoostFlame(horse) {
 }
 
 /**
+ * 모래먼지 파티클 생성
+ * @param {THREE.Vector3} position - 생성 위치
+ */
+export function createDustParticle(position) {
+  if (!scene) return;
+
+  const dustColors = [0xd2b48c, 0xc4a76c, 0xdeb887, 0xbc9a5c];
+
+  for (let i = 0; i < 2; i++) {
+    const geo = new THREE.SphereGeometry(0.8 + Math.random() * 0.5, 4, 4);
+    const mat = new THREE.MeshBasicMaterial({
+      color: dustColors[Math.floor(Math.random() * dustColors.length)],
+      transparent: true,
+      opacity: 0.6,
+    });
+    const particle = new THREE.Mesh(geo, mat);
+
+    // 발 위치 근처에서 생성
+    particle.position.copy(position);
+    particle.position.x += (Math.random() - 0.5) * 10;
+    particle.position.y = 1 + Math.random() * 2;
+    particle.position.z += (Math.random() - 0.5) * 5;
+
+    // 위로 퍼지는 속도
+    particle.userData.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      Math.random() * 0.2 + 0.1,
+      (Math.random() - 0.5) * 0.3
+    );
+    particle.userData.life = 1.0;
+    particle.userData.decay = 0.04 + Math.random() * 0.02;
+    particle.userData.initialScale = particle.scale.x;
+
+    scene.add(particle);
+    dustParticles.push(particle);
+  }
+}
+
+/**
+ * 모래먼지 파티클 업데이트
+ */
+export function updateDustEffects() {
+  for (let i = dustParticles.length - 1; i >= 0; i--) {
+    const p = dustParticles[i];
+
+    // 위치 업데이트
+    p.position.add(p.userData.velocity);
+
+    // 위로 퍼지면서 감속
+    p.userData.velocity.y *= 0.95;
+    p.userData.velocity.x *= 0.98;
+    p.userData.velocity.z *= 0.98;
+
+    // 수명 감소
+    p.userData.life -= p.userData.decay;
+    p.material.opacity = p.userData.life * 0.6;
+
+    // 크기 커지면서 사라짐
+    const scale = p.userData.initialScale * (1 + (1 - p.userData.life) * 0.5);
+    p.scale.set(scale, scale, scale);
+
+    // 수명 다하면 제거
+    if (p.userData.life <= 0) {
+      scene.remove(p);
+      p.geometry.dispose();
+      p.material.dispose();
+      dustParticles.splice(i, 1);
+    }
+  }
+}
+
+/**
+ * 달리기 먼지 발생 (말 객체용)
+ * @param {Object} horse - 말 객체
+ */
+export function emitRunningDust(horse) {
+  if (!horse || !horse.mesh) return;
+  createDustParticle(horse.mesh.position);
+}
+
+/**
  * 모든 이펙트 정리
  */
 export function clearAllEffects() {
@@ -112,4 +194,11 @@ export function clearAllEffects() {
     p.material.dispose();
   });
   boostParticles = [];
+
+  dustParticles.forEach((p) => {
+    scene.remove(p);
+    p.geometry.dispose();
+    p.material.dispose();
+  });
+  dustParticles = [];
 }

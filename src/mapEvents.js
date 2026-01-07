@@ -10,14 +10,14 @@ export const MapEventType = {
  * 맵 이벤트 설정
  */
 export const MapEventConfig = {
-  // [MapEventType.LIGHTNING]: {
-  //   name: '번개',
-  //   triggerCondition: 'halfway', // 'halfway', 'distance', 'time', 'random'
-  //   triggerValue: 0.5, // halfway = 50% 지점
-  //   targetCount: 3, // 영향 받는 말 수
-  //   message: '⚡⚡⚡ 하늘에서 번개가 내려옵니다!!!',
-  //   cameraDuration: 180, // 카메라 전환 시간 (3초)
-  // },
+  [MapEventType.LIGHTNING]: {
+    name: '번개',
+    triggerCondition: 'halfway', // 'halfway', 'distance', 'time', 'random'
+    triggerValue: 0.5, // halfway = 50% 지점
+    targetCount: 3, // 영향 받는 말 수
+    message: '⚡⚡⚡ 하늘에서 번개가 내려옵니다!!!',
+    cameraDuration: 180, // 카메라 전환 시간 (3초)
+  },
   [MapEventType.REVERSE_GOAL]: {
     name: '결승선 반전',
     triggerCondition: 'distance',

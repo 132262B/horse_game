@@ -532,7 +532,8 @@ class Horse3D {
 
     scene.add(this.mesh);
 
-    this.baseSpeed = Math.random() * 0.15 + 0.75;
+    // 말마다 고유 속도 (0.70 ~ 0.95)
+    this.baseSpeed = Math.random() * 0.25 + 0.70;
     this.speed = this.baseSpeed;
     this.finished = false;
     this.status = SkillType.RUN;
@@ -559,12 +560,14 @@ class Horse3D {
     const totalHorses = horses.filter((h) => !h.finished).length;
     if (totalHorses > 1 && this.rank > 0) {
       const rankRatio = (this.rank - 1) / (totalHorses - 1);
-      const rubberBand = 0.9 + rankRatio * 0.4;
+      // 러버밴딩 중간 (1등: -8%, 꼴등: +22%)
+      const rubberBand = 0.92 + rankRatio * 0.3;
       this.speed = this.baseSpeed * rubberBand;
     }
 
-    if (Math.random() < 0.02) {
-      this.speed = this.baseSpeed * (0.8 + Math.random() * 0.5);
+    // 가끔 속도 변동 (순간적인 컨디션 변화)
+    if (Math.random() < 0.01) {
+      this.speed = this.baseSpeed * (0.85 + Math.random() * 0.3);
     }
 
     // 스킬에 따른 속도 계산 (모듈 사용)

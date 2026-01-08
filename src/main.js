@@ -734,35 +734,47 @@ function createTrack(laneCount) {
   scene.add(rightBorder);
   trackObjects.push(rightBorder);
 
-  const fencePostGeo = new THREE.BoxGeometry(3, 20, 3);
-  const fencePostMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
-  const fenceRailGeo = new THREE.BoxGeometry(2, 3, 100);
-  const fenceRailMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+  // 레이싱 경기장 스타일 광고판 (트랙 양쪽)
+  const adBoardHeight = 25;
+  const adBoardLength = 100; // 각 패널 길이
+  const adBoardGap = 10; // 패널 사이 간격
+  const adBoardThickness = 2;
+  const adBoardY = adBoardHeight / 2; // 바닥에서 패널 중심 높이
+  const adBoardOffset = 30; // 트랙에서 떨어진 거리
+  const totalBoardLength = 4500; // 전체 광고판 길이
 
-  for (let z = 0; z > -4500; z -= 100) {
-    const postL = new THREE.Mesh(fencePostGeo.clone(), fencePostMat.clone());
-    postL.position.set(-currentTrackWidth / 2 - 30, 10, z);
-    postL.castShadow = true;
-    scene.add(postL);
-    trackObjects.push(postL);
+  // 광고판 프레임 (검은색 테두리) - 연속으로 이어짐
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  // 광고판 스크린 (흰색)
+  const screenMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.1 });
 
-    const postR = new THREE.Mesh(fencePostGeo.clone(), fencePostMat.clone());
-    postR.position.set(currentTrackWidth / 2 + 30, 10, z);
-    postR.castShadow = true;
-    scene.add(postR);
-    trackObjects.push(postR);
+  // 왼쪽 연속 프레임
+  const frameGeoL = new THREE.BoxGeometry(adBoardThickness + 2, adBoardHeight + 4, totalBoardLength);
+  const frameL = new THREE.Mesh(frameGeoL, frameMat.clone());
+  frameL.position.set(-currentTrackWidth / 2 - adBoardOffset, adBoardY, -totalBoardLength / 2);
+  scene.add(frameL);
+  trackObjects.push(frameL);
 
-    if (z > -4400) {
-      const railL = new THREE.Mesh(fenceRailGeo.clone(), fenceRailMat.clone());
-      railL.position.set(-currentTrackWidth / 2 - 30, 15, z - 50);
-      scene.add(railL);
-      trackObjects.push(railL);
+  // 오른쪽 연속 프레임
+  const frameGeoR = new THREE.BoxGeometry(adBoardThickness + 2, adBoardHeight + 4, totalBoardLength);
+  const frameR = new THREE.Mesh(frameGeoR, frameMat.clone());
+  frameR.position.set(currentTrackWidth / 2 + adBoardOffset, adBoardY, -totalBoardLength / 2);
+  scene.add(frameR);
+  trackObjects.push(frameR);
 
-      const railR = new THREE.Mesh(fenceRailGeo.clone(), fenceRailMat.clone());
-      railR.position.set(currentTrackWidth / 2 + 30, 15, z - 50);
-      scene.add(railR);
-      trackObjects.push(railR);
-    }
+  // 흰색 스크린 패널들 (간격으로 분리)
+  for (let z = 0; z > -4500; z -= (adBoardLength + adBoardGap)) {
+    const screenGeoL = new THREE.BoxGeometry(adBoardThickness, adBoardHeight, adBoardLength);
+    const screenL = new THREE.Mesh(screenGeoL, screenMat.clone());
+    screenL.position.set(-currentTrackWidth / 2 - adBoardOffset + 3, adBoardY, z - adBoardLength / 2);
+    scene.add(screenL);
+    trackObjects.push(screenL);
+
+    const screenGeoR = new THREE.BoxGeometry(adBoardThickness, adBoardHeight, adBoardLength);
+    const screenR = new THREE.Mesh(screenGeoR, screenMat.clone());
+    screenR.position.set(currentTrackWidth / 2 + adBoardOffset - 3, adBoardY, z - adBoardLength / 2);
+    scene.add(screenR);
+    trackObjects.push(screenR);
   }
 
   for (let dist = 500; dist <= 3500; dist += 500) {

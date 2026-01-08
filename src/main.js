@@ -1,16 +1,19 @@
 import * as THREE from 'three';
-import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed, applyShockPenalty } from './skills.js';
+import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed } from './skills.js';
 import { updateMotion, resetMotion } from './motion.js';
-import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound, toggleMute, getIsMuted } from './sound.js';
+import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound, toggleMute } from './sound.js';
 import { initEffects, updateBoostEffects, emitBoostFlame, updateDustEffects, emitRunningDust } from './effects.js';
-import { MapEventType, MapEventConfig, mapEventManager } from './mapEvents.js';
+import { MapEventType, mapEventManager } from './mapEvents.js';
+import {
+  initMap, createSky, createClouds, updateClouds, createGround, createTrack,
+  createStartLine, createFinishLine, moveFinishLine, createBillboard,
+  getTrackWidth, getFinishLineZ, setFinishLineZ, getOriginalFinishZ, getLaneConfig, resetMap
+} from './map/map.js';
+import { initSpectators, createSpectators, updateSpectators } from './map/spectators.js';
 
 let scene, camera, renderer, dirLight;
 let horses = [];
 let isRacing = false;
-
-let finishLineZ = -3500;
-const ORIGINAL_FINISH_Z = -3500;
 
 let frameCount = 0;
 let finishedCount = 0;
@@ -212,11 +215,9 @@ function executeLightningEvent(config) {
 function executeReverseGoalEvent(config) {
   addLog(config.message);
 
-  // 새 결승선 위치 설정
-  finishLineZ = config.newFinishZ;
-
-  // 기존 결승선 제거 및 새 위치에 생성
-  moveFinishLine(finishLineZ);
+  // 새 결승선 위치 설정 및 이동
+  setFinishLineZ(config.newFinishZ);
+  moveFinishLine(config.newFinishZ);
 
   // 모든 말 180도 회전 (뒤로 돌기)
   horses.forEach(horse => {
@@ -541,68 +542,9 @@ function updateObstacles() {
   }
 }
 
-// 결승선 이동
-function moveFinishLine(newZ) {
-  // 기존 결승선 객체 제거
-  finishLineObjects.forEach((obj) => {
-    scene.remove(obj);
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-  });
-  finishLineObjects = [];
-
-  // 새 위치에 결승선 생성
-  const finishLineGeo = new THREE.BoxGeometry(currentTrackWidth + 20, 10, 15);
-  const finishLineMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // 초록색으로 변경
-  const finishLine = new THREE.Mesh(finishLineGeo, finishLineMat);
-  finishLine.position.set(0, 5, newZ);
-  scene.add(finishLine);
-  finishLineObjects.push(finishLine);
-
-  const gatePostGeo = new THREE.BoxGeometry(10, 80, 10);
-  const gatePostMat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-
-  const gateL = new THREE.Mesh(gatePostGeo.clone(), gatePostMat.clone());
-  gateL.position.set(-currentTrackWidth / 2 - 15, 40, newZ);
-  gateL.castShadow = true;
-  scene.add(gateL);
-  finishLineObjects.push(gateL);
-
-  const gateR = new THREE.Mesh(gatePostGeo.clone(), gatePostMat.clone());
-  gateR.position.set(currentTrackWidth / 2 + 15, 40, newZ);
-  gateR.castShadow = true;
-  scene.add(gateR);
-  finishLineObjects.push(gateR);
-
-  const gateTopGeo = new THREE.BoxGeometry(currentTrackWidth + 50, 15, 15);
-  const gateTop = new THREE.Mesh(gateTopGeo, gatePostMat.clone());
-  gateTop.position.set(0, 85, newZ);
-  scene.add(gateTop);
-  finishLineObjects.push(gateTop);
-
-  // REVERSE 사인
-  const finishCanvas = document.createElement('canvas');
-  finishCanvas.width = 512;
-  finishCanvas.height = 128;
-  const fctx = finishCanvas.getContext('2d');
-  fctx.fillStyle = '#00ff00';
-  fctx.fillRect(0, 0, 512, 128);
-  fctx.fillStyle = '#000000';
-  fctx.font = 'bold 70px Arial';
-  fctx.textAlign = 'center';
-  fctx.fillText('REVERSE!', 256, 95);
-
-  const finishTexture = new THREE.CanvasTexture(finishCanvas);
-  const finishSignMat = new THREE.MeshBasicMaterial({ map: finishTexture });
-  const finishSign = new THREE.Mesh(new THREE.PlaneGeometry(100, 25), finishSignMat);
-  finishSign.position.set(0, 110, newZ + 1);
-  scene.add(finishSign);
-  finishLineObjects.push(finishSign);
-}
-
 // 맵 이벤트 체크 및 실행 (절반 지점에서 1회만)
 function checkMapEvents() {
-  if (mapEventManager.checkHalfwayReached(horses, ORIGINAL_FINISH_Z)) {
+  if (mapEventManager.checkHalfwayReached(horses, getOriginalFinishZ())) {
     // 랜덤으로 이벤트 1개 선택하여 실행
     mapEventManager.triggerRandomEvent({
       [MapEventType.LIGHTNING]: executeLightningEvent,
@@ -612,384 +554,13 @@ function checkMapEvents() {
   }
 }
 
-// --- 구름 배열 ---
-let clouds = [];
-
-function createSky() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-  gradient.addColorStop(0, '#1e3c72');
-  gradient.addColorStop(0.3, '#2a5298');
-  gradient.addColorStop(0.6, '#87ceeb');
-  gradient.addColorStop(1, '#b0e0e6');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 512, 512);
-
-  const skyTexture = new THREE.CanvasTexture(canvas);
-  scene.background = skyTexture;
-}
-
-function createClouds() {
-  const cloudGroup = new THREE.Group();
-
-  for (let i = 0; i < 30; i++) {
-    const cloud = new THREE.Group();
-    const puffCount = 3 + Math.floor(Math.random() * 4);
-
-    for (let j = 0; j < puffCount; j++) {
-      const puffGeo = new THREE.SphereGeometry(20 + Math.random() * 30, 8, 6);
-      const puffMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const puff = new THREE.Mesh(puffGeo, puffMat);
-      puff.position.set(j * 25 - puffCount * 12, Math.random() * 10 - 5, Math.random() * 15 - 7);
-      puff.scale.y = 0.6;
-      cloud.add(puff);
-    }
-
-    cloud.position.set(Math.random() * 2000 - 1000, 150 + Math.random() * 200, Math.random() * -4500);
-    cloud.userData.speed = 0.1 + Math.random() * 0.2;
-
-    cloudGroup.add(cloud);
-    clouds.push(cloud);
-  }
-
-  scene.add(cloudGroup);
-}
-
-function updateClouds() {
-  clouds.forEach((cloud) => {
-    cloud.position.x += cloud.userData.speed;
-    if (cloud.position.x > 1200) {
-      cloud.position.x = -1200;
-    }
-  });
-}
-
-// --- 트랙 설정 ---
-const LANE_WIDTH = 30;
-const MIN_LANES = 8;
-const MAX_LANES = 20;
-let currentTrackWidth = LANE_WIDTH * MIN_LANES;
-let trackObjects = [];
-
-function createGround() {
-  const grassGeo = new THREE.PlaneGeometry(2000, 10000);
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-  const grass = new THREE.Mesh(grassGeo, grassMat);
-  grass.rotation.x = -Math.PI / 2;
-  grass.position.set(0, -0.5, -2000);
-  grass.receiveShadow = true;
-  scene.add(grass);
-}
-
-function createTrack(laneCount) {
-  trackObjects.forEach((obj) => {
-    scene.remove(obj);
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-  });
-  trackObjects = [];
-
-  const lanes = Math.max(MIN_LANES, Math.min(MAX_LANES, laneCount));
-  currentTrackWidth = LANE_WIDTH * lanes;
-
-  const trackGeo = new THREE.PlaneGeometry(currentTrackWidth, 10000);
-  const trackMat = new THREE.MeshStandardMaterial({ color: 0xc2956e });
-  const track = new THREE.Mesh(trackGeo, trackMat);
-  track.rotation.x = -Math.PI / 2;
-  track.position.set(0, 0, -2000);
-  track.receiveShadow = true;
-  scene.add(track);
-  trackObjects.push(track);
-
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const lineGeo = new THREE.PlaneGeometry(2, 10000);
-
-  for (let i = 1; i < lanes; i++) {
-    const line = new THREE.Mesh(lineGeo.clone(), lineMat.clone());
-    line.rotation.x = -Math.PI / 2;
-    line.position.set(-currentTrackWidth / 2 + i * LANE_WIDTH, 0.5, -2000);
-    scene.add(line);
-    trackObjects.push(line);
-  }
-
-  const borderGeo = new THREE.PlaneGeometry(5, 10000);
-  const borderMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-
-  const leftBorder = new THREE.Mesh(borderGeo.clone(), borderMat.clone());
-  leftBorder.rotation.x = -Math.PI / 2;
-  leftBorder.position.set(-currentTrackWidth / 2, 0.5, -2000);
-  scene.add(leftBorder);
-  trackObjects.push(leftBorder);
-
-  const rightBorder = new THREE.Mesh(borderGeo.clone(), borderMat.clone());
-  rightBorder.rotation.x = -Math.PI / 2;
-  rightBorder.position.set(currentTrackWidth / 2, 0.5, -2000);
-  scene.add(rightBorder);
-  trackObjects.push(rightBorder);
-
-  // 레이싱 경기장 스타일 광고판 (트랙 양쪽)
-  const adBoardHeight = 25;
-  const adBoardLength = 100; // 각 패널 길이
-  const adBoardGap = 10; // 패널 사이 간격
-  const adBoardThickness = 2;
-  const adBoardY = adBoardHeight / 2; // 바닥에서 패널 중심 높이
-  const adBoardOffset = 30; // 트랙에서 떨어진 거리
-  const totalBoardLength = 4500; // 전체 광고판 길이
-
-  // 광고판 프레임 (검은색 테두리) - 연속으로 이어짐
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-  // 광고판 스크린 (흰색)
-  const screenMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.1 });
-
-  // 왼쪽 연속 프레임
-  const frameGeoL = new THREE.BoxGeometry(adBoardThickness + 2, adBoardHeight + 4, totalBoardLength);
-  const frameL = new THREE.Mesh(frameGeoL, frameMat.clone());
-  frameL.position.set(-currentTrackWidth / 2 - adBoardOffset, adBoardY, -totalBoardLength / 2);
-  scene.add(frameL);
-  trackObjects.push(frameL);
-
-  // 오른쪽 연속 프레임
-  const frameGeoR = new THREE.BoxGeometry(adBoardThickness + 2, adBoardHeight + 4, totalBoardLength);
-  const frameR = new THREE.Mesh(frameGeoR, frameMat.clone());
-  frameR.position.set(currentTrackWidth / 2 + adBoardOffset, adBoardY, -totalBoardLength / 2);
-  scene.add(frameR);
-  trackObjects.push(frameR);
-
-  // 흰색 스크린 패널들 (간격으로 분리)
-  for (let z = 0; z > -4500; z -= (adBoardLength + adBoardGap)) {
-    const screenGeoL = new THREE.BoxGeometry(adBoardThickness, adBoardHeight, adBoardLength);
-    const screenL = new THREE.Mesh(screenGeoL, screenMat.clone());
-    screenL.position.set(-currentTrackWidth / 2 - adBoardOffset + 3, adBoardY, z - adBoardLength / 2);
-    scene.add(screenL);
-    trackObjects.push(screenL);
-
-    const screenGeoR = new THREE.BoxGeometry(adBoardThickness, adBoardHeight, adBoardLength);
-    const screenR = new THREE.Mesh(screenGeoR, screenMat.clone());
-    screenR.position.set(currentTrackWidth / 2 + adBoardOffset - 3, adBoardY, z - adBoardLength / 2);
-    scene.add(screenR);
-    trackObjects.push(screenR);
-  }
-
-  for (let dist = 500; dist <= 3500; dist += 500) {
-    const markerCanvas = document.createElement('canvas');
-    markerCanvas.width = 128;
-    markerCanvas.height = 64;
-    const mctx = markerCanvas.getContext('2d');
-    mctx.fillStyle = '#ffffff';
-    mctx.fillRect(0, 0, 128, 64);
-    mctx.fillStyle = '#000000';
-    mctx.font = 'bold 40px Arial';
-    mctx.textAlign = 'center';
-    mctx.fillText(`${dist}m`, 64, 48);
-
-    const markerTexture = new THREE.CanvasTexture(markerCanvas);
-    const markerMat = new THREE.MeshBasicMaterial({ map: markerTexture });
-    const markerGeo = new THREE.PlaneGeometry(20, 10);
-
-    const markerL = new THREE.Mesh(markerGeo.clone(), markerMat.clone());
-    markerL.position.set(-currentTrackWidth / 2 - 50, 30, -dist);
-    markerL.rotation.y = Math.PI / 4;
-    scene.add(markerL);
-    trackObjects.push(markerL);
-
-    const markerR = new THREE.Mesh(markerGeo.clone(), markerMat.clone());
-    markerR.position.set(currentTrackWidth / 2 + 50, 30, -dist);
-    markerR.rotation.y = -Math.PI / 4;
-    scene.add(markerR);
-    trackObjects.push(markerR);
-  }
-}
-
-let finishLineObjects = [];
-let startLineObjects = [];
-
-function createStartLine() {
-  startLineObjects.forEach((obj) => {
-    scene.remove(obj);
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-  });
-  startLineObjects = [];
-
-  const startLineZ = 0;
-
-  // 체크 무늬 텍스처 생성
-  const checkCanvas = document.createElement('canvas');
-  checkCanvas.width = 128;
-  checkCanvas.height = 32;
-  const ctx = checkCanvas.getContext('2d');
-  const squareSize = 16;
-
-  for (let x = 0; x < checkCanvas.width; x += squareSize) {
-    for (let y = 0; y < checkCanvas.height; y += squareSize) {
-      const isWhite = ((x / squareSize) + (y / squareSize)) % 2 === 0;
-      ctx.fillStyle = isWhite ? '#ffffff' : '#000000';
-      ctx.fillRect(x, y, squareSize, squareSize);
-    }
-  }
-
-  const checkTexture = new THREE.CanvasTexture(checkCanvas);
-  checkTexture.wrapS = THREE.RepeatWrapping;
-  checkTexture.wrapT = THREE.RepeatWrapping;
-  checkTexture.repeat.set(currentTrackWidth / 30, 1);
-
-  // 출발선 바닥 (체크 무늬)
-  const startLineGeo = new THREE.PlaneGeometry(currentTrackWidth + 20, 10);
-  const startLineMat = new THREE.MeshBasicMaterial({ map: checkTexture });
-  const startLine = new THREE.Mesh(startLineGeo, startLineMat);
-  startLine.rotation.x = -Math.PI / 2;
-  startLine.position.set(0, 1, startLineZ); // 흰색 선보다 살짝 높게
-  scene.add(startLine);
-  startLineObjects.push(startLine);
-}
-
-function createFinishLine() {
-  finishLineObjects.forEach((obj) => {
-    scene.remove(obj);
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-  });
-  finishLineObjects = [];
-
-  const finishLineGeo = new THREE.BoxGeometry(currentTrackWidth + 20, 10, 15);
-  const finishLineMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const finishLine = new THREE.Mesh(finishLineGeo, finishLineMat);
-  finishLine.position.set(0, 5, finishLineZ);
-  scene.add(finishLine);
-  finishLineObjects.push(finishLine);
-
-  const gatePostGeo = new THREE.BoxGeometry(10, 80, 10);
-  const gatePostMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-
-  const gateL = new THREE.Mesh(gatePostGeo.clone(), gatePostMat.clone());
-  gateL.position.set(-currentTrackWidth / 2 - 15, 40, finishLineZ);
-  gateL.castShadow = true;
-  scene.add(gateL);
-  finishLineObjects.push(gateL);
-
-  const gateR = new THREE.Mesh(gatePostGeo.clone(), gatePostMat.clone());
-  gateR.position.set(currentTrackWidth / 2 + 15, 40, finishLineZ);
-  gateR.castShadow = true;
-  scene.add(gateR);
-  finishLineObjects.push(gateR);
-
-  const gateTopGeo = new THREE.BoxGeometry(currentTrackWidth + 50, 15, 15);
-  const gateTop = new THREE.Mesh(gateTopGeo, gatePostMat.clone());
-  gateTop.position.set(0, 85, finishLineZ);
-  scene.add(gateTop);
-  finishLineObjects.push(gateTop);
-
-  const finishCanvas = document.createElement('canvas');
-  finishCanvas.width = 512;
-  finishCanvas.height = 128;
-  const fctx = finishCanvas.getContext('2d');
-  fctx.fillStyle = '#ff0000';
-  fctx.fillRect(0, 0, 512, 128);
-  fctx.fillStyle = '#ffffff';
-  fctx.font = 'bold 80px Arial';
-  fctx.textAlign = 'center';
-  fctx.fillText('FINISH', 256, 95);
-
-  const finishTexture = new THREE.CanvasTexture(finishCanvas);
-  const finishSignMat = new THREE.MeshBasicMaterial({ map: finishTexture });
-  const finishSign = new THREE.Mesh(new THREE.PlaneGeometry(100, 25), finishSignMat);
-  finishSign.position.set(0, 110, finishLineZ + 1);
-  scene.add(finishSign);
-  finishLineObjects.push(finishSign);
-}
-
-// --- 전광판 ---
-let billboardObjects = [];
-
-function createBillboard() {
-  // 기존 전광판 정리
-  billboardObjects.forEach((obj) => {
-    scene.remove(obj);
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) {
-      if (obj.material.map) obj.material.map.dispose();
-      obj.material.dispose();
-    }
-  });
-  billboardObjects = [];
-
-  const billboardZ = ORIGINAL_FINISH_Z / 2; // 중간 지점
-  const billboardX = -(currentTrackWidth / 2 + 80); // 트랙 왼쪽 옆
-
-  // 기둥 2개 (Z축 방향으로 배치)
-  const postGeo = new THREE.BoxGeometry(12, 180, 12);
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
-
-  const postL = new THREE.Mesh(postGeo, postMat);
-  postL.position.set(billboardX, 90, billboardZ - 90);
-  postL.castShadow = true;
-  scene.add(postL);
-  billboardObjects.push(postL);
-
-  const postR = new THREE.Mesh(postGeo, postMat);
-  postR.position.set(billboardX, 90, billboardZ + 90);
-  postR.castShadow = true;
-  scene.add(postR);
-  billboardObjects.push(postR);
-
-  // 전광판 프레임 (트랙 방향으로 회전)
-  const frameGeo = new THREE.BoxGeometry(8, 105, 210);
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-  const frame = new THREE.Mesh(frameGeo, frameMat);
-  frame.position.set(billboardX, 150, billboardZ);
-  scene.add(frame);
-  billboardObjects.push(frame);
-
-  // 전광판 스크린 (캔버스 텍스처)
-  const canvas = document.createElement('canvas');
-  canvas.width = 768;
-  canvas.height = 384;
-  const ctx = canvas.getContext('2d');
-
-  // 배경 (어두운 전광판 느낌)
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, 768, 384);
-
-  // 테두리 발광 효과
-  ctx.strokeStyle = '#00ff88';
-  ctx.lineWidth = 12;
-  ctx.strokeRect(15, 15, 738, 354);
-
-  // 텍스트
-  ctx.fillStyle = '#00ff88';
-  ctx.font = 'bold 108px Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = '#00ff88';
-  ctx.shadowBlur = 30;
-  ctx.fillText('Play Mcp', 384, 192);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const screenMat = new THREE.MeshBasicMaterial({ map: texture });
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(195, 90), screenMat);
-  screen.position.set(billboardX + 5, 150, billboardZ);
-  screen.rotation.y = Math.PI / 2; // 트랙 방향으로 회전
-  scene.add(screen);
-  billboardObjects.push(screen);
-
-  // 뒷면도 추가 (반대편에서도 보이도록)
-  const screenBack = new THREE.Mesh(new THREE.PlaneGeometry(195, 90), screenMat);
-  screenBack.position.set(billboardX - 5, 150, billboardZ);
-  screenBack.rotation.y = -Math.PI / 2; // 반대 방향
-  scene.add(screenBack);
-  billboardObjects.push(screenBack);
-}
-
 function init() {
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x87ceeb, 800, 4000);
+
+  // 맵 모듈 초기화
+  initMap(scene);
+  initSpectators(scene);
 
   // 이펙트 시스템 초기화
   initEffects(scene);
@@ -1005,9 +576,10 @@ function init() {
   createSky();
   createClouds();
   createGround();
-  createTrack(MIN_LANES);
+  createTrack(getLaneConfig().MIN_LANES);
   createFinishLine();
   createBillboard();
+  createSpectators();
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
@@ -1190,8 +762,8 @@ class Horse3D {
     scene.add(this.label);
 
     // 배치
-    const laneWidth = currentTrackWidth / total;
-    this.mesh.position.x = index * laneWidth - currentTrackWidth / 2 + laneWidth / 2;
+    const laneWidth = getTrackWidth() / total;
+    this.mesh.position.x = index * laneWidth - getTrackWidth() / 2 + laneWidth / 2;
     this.mesh.position.y = 4; // 기본 높이
     this.mesh.position.z = 0;
 
@@ -1309,8 +881,8 @@ class Horse3D {
 
     // 골인 체크 (방향에 따라 다름)
     const reachedFinish = this.isReversed
-      ? this.mesh.position.z >= finishLineZ
-      : this.mesh.position.z <= finishLineZ;
+      ? this.mesh.position.z >= getFinishLineZ()
+      : this.mesh.position.z <= getFinishLineZ();
 
     if (reachedFinish) {
       this.finished = true;
@@ -1447,11 +1019,11 @@ function updateSystem() {
 
   // 결승선까지 남은 거리 계산 (카메라 전환용)
   const isReversedLeader = leader.isReversed;
-  let dist = Math.floor(Math.abs(finishLineZ - leader.mesh.position.z));
+  let dist = Math.floor(Math.abs(getFinishLineZ() - leader.mesh.position.z));
   if (isReversedLeader) {
-    if (leader.mesh.position.z >= finishLineZ) dist = 0;
+    if (leader.mesh.position.z >= getFinishLineZ()) dist = 0;
   } else {
-    if (leader.mesh.position.z <= finishLineZ) dist = 0;
+    if (leader.mesh.position.z <= getFinishLineZ()) dist = 0;
   }
 
   // 맵 이벤트 체크
@@ -1474,11 +1046,11 @@ function updateSystem() {
   if (dist <= 500 && dist > 0) {
     if (isReversed) {
       // 반전 시: 반대 방향에서 촬영
-      desiredPos = new THREE.Vector3(-140, 71, finishLineZ + 165);
-      desiredTarget = new THREE.Vector3(-47, 58, finishLineZ);
+      desiredPos = new THREE.Vector3(-140, 71, getFinishLineZ() + 165);
+      desiredTarget = new THREE.Vector3(-47, 58, getFinishLineZ());
     } else {
-      desiredPos = new THREE.Vector3(140, 71, finishLineZ - 165);
-      desiredTarget = new THREE.Vector3(47, 58, finishLineZ);
+      desiredPos = new THREE.Vector3(140, 71, getFinishLineZ() - 165);
+      desiredTarget = new THREE.Vector3(47, 58, getFinishLineZ());
     }
   }
   // 맵 이벤트 발동 중 (전체 조감도)
@@ -1516,7 +1088,7 @@ function updateSystem() {
         break;
       case 2:
       case 5:
-        desiredPos = new THREE.Vector3(currentTrackWidth + 100, 60, targetPos.z);
+        desiredPos = new THREE.Vector3(getTrackWidth() + 100, 60, targetPos.z);
         desiredTarget = new THREE.Vector3(0, 10, targetPos.z);
         break;
       case 3:
@@ -1586,6 +1158,7 @@ function animate() {
   updateLightningEffects();
   updateDustEffects();
   updateObstacles();
+  updateSpectators(isRacing, frameCount);
 
   if (isRacing) {
     // 룰렛이 돌아가는 동안에는 말들이 일시 정지
@@ -1652,6 +1225,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
     alert('최소 2명 필요');
     return;
   }
+  const { MAX_LANES } = getLaneConfig();
   if (names.length > MAX_LANES) {
     alert(`최대 ${MAX_LANES}명까지 참가 가능합니다. 처음 ${MAX_LANES}명만 참가합니다.`);
     names = names.slice(0, MAX_LANES);
@@ -1670,7 +1244,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
     document.getElementById('broadcast').style.display = 'block';
     isRacing = true;
     raceStartFrame = frameCount; // 스킬 딜레이 계산용
-    finishLineZ = ORIGINAL_FINISH_Z; // 결승선 위치 리셋
+    setFinishLineZ(getOriginalFinishZ()); // 결승선 위치 리셋
     mapEventManager.reset(); // 맵 이벤트 리셋
     clearObstacles(); // 장애물 정리
     addLog(`📢 ${names.length}명 출발! 중간 지점에서 이벤트가 발생합니다!`);

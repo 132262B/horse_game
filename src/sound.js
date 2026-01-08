@@ -2,12 +2,28 @@
  * 오디오 컨텍스트 (싱글톤)
  */
 let audioCtx = null;
+let isMuted = false;
 
 function getAudioContext() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   return audioCtx;
+}
+
+/**
+ * 음소거 상태 확인
+ */
+export function getIsMuted() {
+  return isMuted;
+}
+
+/**
+ * 음소거 토글
+ */
+export function toggleMute() {
+  isMuted = !isMuted;
+  return isMuted;
 }
 
 /**
@@ -18,6 +34,7 @@ function getAudioContext() {
  * @param {number} vol - 볼륨 (0~1)
  */
 export function playTone(freq, type, dur, vol = 0.1) {
+  if (isMuted) return;
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -47,6 +64,7 @@ export function playThunder() {
  * 폭죽 소리 재생
  */
 export function playFirework() {
+  if (isMuted) return;
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -111,6 +129,7 @@ export function playCountSound(isGo = false) {
  * 스퍼트(부스트) 불꽃 소리
  */
 export function playBoostSound() {
+  if (isMuted) return;
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -148,6 +167,7 @@ export function playBoostSound() {
  * 바위 착지 소리 (쿵!)
  */
 export function playRockLandSound() {
+  if (isMuted) return;
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -195,6 +215,7 @@ export function playRockLandSound() {
  * 바위 부서지는 소리
  */
 export function playRockBreakSound() {
+  if (isMuted) return;
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
@@ -248,6 +269,7 @@ let lastHoofTime = 0;
 const HOOF_COOLDOWN = 80; // 최소 80ms 간격
 
 export function playHoofSound(volume = 0.03) {
+  if (isMuted) return;
   const now = Date.now();
   if (now - lastHoofTime < HOOF_COOLDOWN) return; // 쿨다운 체크
   lastHoofTime = now;

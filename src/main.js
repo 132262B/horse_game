@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed, applyShockPenalty } from './skills.js';
 import { updateMotion, resetMotion } from './motion.js';
-import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound } from './sound.js';
+import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound, toggleMute, getIsMuted } from './sound.js';
 import { initEffects, updateBoostEffects, emitBoostFlame, updateDustEffects, emitRunningDust } from './effects.js';
 import { MapEventType, MapEventConfig, mapEventManager } from './mapEvents.js';
 
@@ -1570,6 +1570,13 @@ document.getElementById('startBtn').addEventListener('click', () => {
     clearObstacles(); // 장애물 정리
     addLog(`📢 ${names.length}명 출발! 중간 지점에서 이벤트가 발생합니다!`);
   });
+});
+
+// 사운드 토글 버튼
+document.getElementById('sound-toggle').addEventListener('click', () => {
+  const muted = toggleMute();
+  document.getElementById('sound-on-icon').style.display = muted ? 'none' : 'block';
+  document.getElementById('sound-off-icon').style.display = muted ? 'block' : 'none';
 });
 
 init();

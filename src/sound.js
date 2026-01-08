@@ -60,6 +60,48 @@ export function playThunder() {
   playTone(50, 'square', 0.8, 0.5);
 }
 
+
+// 순간이동 사운드
+export function playTeleportSound() {
+  if (isMuted) return;
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  // 워프 느낌의 상승음
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(200, ctx.currentTime);
+  osc1.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.3);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  gain1.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+  osc1.start();
+  osc1.stop(ctx.currentTime + 0.4);
+
+  // 공간 왜곡 느낌의 저음
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(80, ctx.currentTime);
+  osc2.frequency.setValueAtTime(120, ctx.currentTime + 0.1);
+  osc2.frequency.setValueAtTime(60, ctx.currentTime + 0.2);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  gain2.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+  osc2.start();
+  osc2.stop(ctx.currentTime + 0.5);
+
+  // 팝/스파클 효과음
+  setTimeout(() => {
+    playTone(800, 'sine', 0.1, 0.2);
+    playTone(1000, 'sine', 0.08, 0.15);
+    playTone(1200, 'sine', 0.06, 0.1);
+  }, 150);
+}
+
 /**
  * 폭죽 소리 재생
  */

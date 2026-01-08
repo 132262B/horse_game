@@ -7,28 +7,34 @@ export const MapEventType = {
   LIGHTNING: 'lightning',
   REVERSE_GOAL: 'reverse_goal', // 결승선 반전
   OBSTACLE: 'obstacle', // 하늘에서 장애물 낙하
-};
+  TELEPORT: 'teleport', // 말들 위치 랜덤 교환
+};;
 
 /**
  * 이벤트별 슬롯머신 표시 정보
  */
 export const MapEventDisplay = {
-  [MapEventType.LIGHTNING]: {
-    name: '번개 낙뢰',
-    color: '#ffff00',
-    svg: `<svg viewBox="0 0 24 24" fill="#ffff00"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`,
+  // [MapEventType.LIGHTNING]: {
+  //   name: '번개 낙뢰',
+  //   color: '#ffff00',
+  //   svg: `<svg viewBox="0 0 24 24" fill="#ffff00"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`,
+  // },
+  // [MapEventType.REVERSE_GOAL]: {
+  //   name: '결승선 반전',
+  //   color: '#00ff88',
+  //   svg: `<svg viewBox="0 0 24 24" fill="#00ff88"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>`,
+  // },
+  // [MapEventType.OBSTACLE]: {
+  //   name: '장애물 낙하',
+  //   color: '#ff6b6b',
+  //   svg: `<svg viewBox="0 0 24 24" fill="#ff6b6b"><circle cx="12" cy="12" r="10"/><circle cx="8" cy="9" r="2" fill="#333"/><circle cx="15" cy="8" r="1.5" fill="#333"/><circle cx="16" cy="14" r="2" fill="#333"/><circle cx="9" cy="15" r="1.5" fill="#333"/></svg>`,
+  // },
+  [MapEventType.TELEPORT]: {
+    name: '순간이동',
+    color: '#aa55ff',
+    svg: `<svg viewBox="0 0 24 24" fill="#aa55ff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>`,
   },
-  [MapEventType.REVERSE_GOAL]: {
-    name: '결승선 반전',
-    color: '#00ff88',
-    svg: `<svg viewBox="0 0 24 24" fill="#00ff88"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>`,
-  },
-  [MapEventType.OBSTACLE]: {
-    name: '장애물 낙하',
-    color: '#ff6b6b',
-    svg: `<svg viewBox="0 0 24 24" fill="#ff6b6b"><circle cx="12" cy="12" r="10"/><circle cx="8" cy="9" r="2" fill="#333"/><circle cx="15" cy="8" r="1.5" fill="#333"/><circle cx="16" cy="14" r="2" fill="#333"/><circle cx="9" cy="15" r="1.5" fill="#333"/></svg>`,
-  },
-};
+};;
 
 /**
  * 맵 이벤트 설정
@@ -60,7 +66,15 @@ export const MapEventConfig = {
     fallHeight: 300, // 낙하 시작 높이
     fallSpeed: 5, // 낙하 속도
   },
-};
+  [MapEventType.TELEPORT]: {
+    name: '순간이동',
+    triggerCondition: 'halfway',
+    triggerValue: 0.5,
+    message: '🌀🌀🌀 공간이 뒤틀립니다! 말들의 위치가 섞입니다!!!',
+    cameraDuration: 180, // 3초
+    teleportDelay: 500, // 순간이동 딜레이 (ms)
+  },
+};;
 
 /**
  * 맵 이벤트 매니저 클래스

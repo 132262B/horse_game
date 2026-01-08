@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SkillType, SkillConfig, triggerRandomSkill, calculateSkillSpeed } from './skills.js';
 import { updateMotion, resetMotion } from './motion.js';
-import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound, toggleMute } from './sound.js';
+import { playThunder, playFirework, playCountSound, playHoofSound, playBoostSound, playRockBreakSound, playRockLandSound, playTeleportSound, toggleMute } from './sound.js';
 import { initEffects, updateBoostEffects, emitBoostFlame, updateDustEffects, emitRunningDust } from './effects.js';
 import { MapEventType, mapEventManager } from './mapEvents.js';
 import {
@@ -342,6 +342,167 @@ function executeObstacleEvent(config) {
   });
 }
 
+
+// --- 순간이동 이펙트 ---
+let teleportEffects = [];
+
+function createTeleportEffect(position, isDisappear = true) {
+  const effectGroup = new THREE.Group();
+  effectGroup.position.copy(position);
+  
+  // 소용돌이 파티클
+  const particleCount = 30;
+  const particles = [];
+  
+  for (let i = 0; i < particleCount; i++) {
+    const geo = new THREE.SphereGeometry(0.8, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: isDisappear ? 0xaa55ff : 0x55ffaa,
+      transparent: true,
+      opacity: 1,
+    });
+    const particle = new THREE.Mesh(geo, mat);
+    
+    // 원형으로 배치
+    const angle = (i / particleCount) * Math.PI * 2;
+    const radius = 8 + Math.random() * 4;
+    particle.position.set(
+      Math.cos(angle) * radius,
+      Math.random() * 30,
+      Math.sin(angle) * radius
+    );
+    
+    particle.userData = {
+      angle: angle,
+      radius: radius,
+      speed: 0.1 + Math.random() * 0.1,
+      ySpeed: isDisappear ? 0.5 : -0.3,
+      life: 1.0,
+    };
+    
+    effectGroup.add(particle);
+    particles.push(particle);
+  }
+  
+  // 중앙 빛기둥
+  const pillarGeo = new THREE.CylinderGeometry(3, 3, 60, 16, 1, true);
+  const pillarMat = new THREE.MeshBasicMaterial({
+    color: isDisappear ? 0xaa55ff : 0x55ffaa,
+    transparent: true,
+    opacity: 0.6,
+    side: THREE.DoubleSide,
+  });
+  const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+  pillar.position.y = 30;
+  effectGroup.add(pillar);
+  
+  // 바닥 링
+  const ringGeo = new THREE.RingGeometry(5, 15, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: isDisappear ? 0xaa55ff : 0x55ffaa,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 1;
+  effectGroup.add(ring);
+  
+  scene.add(effectGroup);
+  
+  teleportEffects.push({
+    group: effectGroup,
+    particles: particles,
+    pillar: pillar,
+    ring: ring,
+    isDisappear: isDisappear,
+    life: 1.0,
+    age: 0,
+  });
+}
+
+function updateTeleportEffects() {
+  for (let i = teleportEffects.length - 1; i >= 0; i--) {
+    const effect = teleportEffects[i];
+    effect.age++;
+    effect.life -= 0.02;
+    
+    // 파티클 회전 및 페이드
+    effect.particles.forEach(p => {
+      p.userData.angle += p.userData.speed;
+      const shrinkFactor = effect.isDisappear ? (1 - effect.age * 0.02) : Math.min(1, effect.age * 0.04);
+      p.position.x = Math.cos(p.userData.angle) * p.userData.radius * shrinkFactor;
+      p.position.z = Math.sin(p.userData.angle) * p.userData.radius * shrinkFactor;
+      p.position.y += p.userData.ySpeed;
+      p.material.opacity = effect.life;
+    });
+    
+    // 빛기둥 페이드
+    effect.pillar.material.opacity = effect.life * 0.6;
+    effect.pillar.scale.x = effect.isDisappear ? effect.life : (2 - effect.life);
+    effect.pillar.scale.z = effect.pillar.scale.x;
+    
+    // 링 확장 및 페이드
+    effect.ring.material.opacity = effect.life * 0.8;
+    effect.ring.scale.x = effect.isDisappear ? (2 - effect.life) : effect.life;
+    effect.ring.scale.y = effect.ring.scale.x;
+    
+    if (effect.life <= 0) {
+      scene.remove(effect.group);
+      teleportEffects.splice(i, 1);
+    }
+  }
+}
+
+function executeTeleportEvent(config) {
+  const activeHorses = horses.filter(h => !h.finished);
+  if (activeHorses.length < 2) return;
+
+  addLog(config.message);
+
+  // 현재 위치들 저장
+  const positions = activeHorses.map(h => ({
+    x: h.mesh.position.x,
+    z: h.mesh.position.z,
+  }));
+
+  // 위치 배열 셔플 (Fisher-Yates)
+  for (let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+
+  // 사라지는 이펙트 + 사운드
+  activeHorses.forEach((horse, index) => {
+    setTimeout(() => {
+      createTeleportEffect(horse.mesh.position.clone(), true);
+      playTeleportSound();
+      
+      // 말 숨기기
+      horse.mesh.visible = false;
+    }, index * 100);
+  });
+
+  // 순간이동 후 나타나는 이펙트
+  setTimeout(() => {
+    activeHorses.forEach((horse, index) => {
+      setTimeout(() => {
+        // 새 위치로 이동 (X, Z만 변경, Y는 유지)
+        horse.mesh.position.x = positions[index].x;
+        horse.mesh.position.z = positions[index].z;
+        
+        // 나타나는 이펙트
+        createTeleportEffect(horse.mesh.position.clone(), false);
+        playTeleportSound();
+        
+        // 말 다시 보이기
+        horse.mesh.visible = true;
+      }, index * 100);
+    });
+  }, config.teleportDelay || 500);
+}
+
 /**
  * 장애물 부서지는 이펙트
  */
@@ -550,6 +711,7 @@ function checkMapEvents() {
       [MapEventType.LIGHTNING]: executeLightningEvent,
       [MapEventType.REVERSE_GOAL]: executeReverseGoalEvent,
       [MapEventType.OBSTACLE]: executeObstacleEvent,
+      [MapEventType.TELEPORT]: executeTeleportEvent,
     });
   }
 }
@@ -1158,6 +1320,7 @@ function animate() {
   updateLightningEffects();
   updateDustEffects();
   updateObstacles();
+  updateTeleportEffects();
   updateSpectators(isRacing, frameCount);
 
   if (isRacing) {

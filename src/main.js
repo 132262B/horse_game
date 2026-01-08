@@ -893,6 +893,88 @@ function createFinishLine() {
   finishLineObjects.push(finishSign);
 }
 
+// --- 전광판 ---
+let billboardObjects = [];
+
+function createBillboard() {
+  // 기존 전광판 정리
+  billboardObjects.forEach((obj) => {
+    scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    }
+  });
+  billboardObjects = [];
+
+  const billboardZ = ORIGINAL_FINISH_Z / 2; // 중간 지점
+  const billboardX = -(currentTrackWidth / 2 + 80); // 트랙 왼쪽 옆
+
+  // 기둥 2개 (Z축 방향으로 배치)
+  const postGeo = new THREE.BoxGeometry(12, 180, 12);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+
+  const postL = new THREE.Mesh(postGeo, postMat);
+  postL.position.set(billboardX, 90, billboardZ - 90);
+  postL.castShadow = true;
+  scene.add(postL);
+  billboardObjects.push(postL);
+
+  const postR = new THREE.Mesh(postGeo, postMat);
+  postR.position.set(billboardX, 90, billboardZ + 90);
+  postR.castShadow = true;
+  scene.add(postR);
+  billboardObjects.push(postR);
+
+  // 전광판 프레임 (트랙 방향으로 회전)
+  const frameGeo = new THREE.BoxGeometry(8, 105, 210);
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const frame = new THREE.Mesh(frameGeo, frameMat);
+  frame.position.set(billboardX, 150, billboardZ);
+  scene.add(frame);
+  billboardObjects.push(frame);
+
+  // 전광판 스크린 (캔버스 텍스처)
+  const canvas = document.createElement('canvas');
+  canvas.width = 768;
+  canvas.height = 384;
+  const ctx = canvas.getContext('2d');
+
+  // 배경 (어두운 전광판 느낌)
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, 768, 384);
+
+  // 테두리 발광 효과
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(15, 15, 738, 354);
+
+  // 텍스트
+  ctx.fillStyle = '#00ff88';
+  ctx.font = 'bold 108px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#00ff88';
+  ctx.shadowBlur = 30;
+  ctx.fillText('Play Mcp', 384, 192);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const screenMat = new THREE.MeshBasicMaterial({ map: texture });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(195, 90), screenMat);
+  screen.position.set(billboardX + 5, 150, billboardZ);
+  screen.rotation.y = Math.PI / 2; // 트랙 방향으로 회전
+  scene.add(screen);
+  billboardObjects.push(screen);
+
+  // 뒷면도 추가 (반대편에서도 보이도록)
+  const screenBack = new THREE.Mesh(new THREE.PlaneGeometry(195, 90), screenMat);
+  screenBack.position.set(billboardX - 5, 150, billboardZ);
+  screenBack.rotation.y = -Math.PI / 2; // 반대 방향
+  scene.add(screenBack);
+  billboardObjects.push(screenBack);
+}
+
 function init() {
   scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x87ceeb, 800, 4000);
@@ -913,6 +995,7 @@ function init() {
   createGround();
   createTrack(MIN_LANES);
   createFinishLine();
+  createBillboard();
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
@@ -1558,6 +1641,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
   createTrack(names.length);
   createFinishLine();
   createStartLine();
+  createBillboard();
 
   names.forEach((name, i) => horses.push(new Horse3D(name, i, names.length)));
 

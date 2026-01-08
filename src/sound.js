@@ -268,7 +268,7 @@ export function playRockBreakSound() {
 let lastHoofTime = 0;
 const HOOF_COOLDOWN = 80; // 최소 80ms 간격
 
-export function playHoofSound(volume = 0.03) {
+export function playHoofSound(volume = 0.04) {
   if (isMuted) return;
   const now = Date.now();
   if (now - lastHoofTime < HOOF_COOLDOWN) return; // 쿨다운 체크

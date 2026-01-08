@@ -1582,7 +1582,10 @@ function animate() {
   updateObstacles();
 
   if (isRacing) {
-    horses.forEach((h) => h.update());
+    // 룰렛이 돌아가는 동안에는 말들이 일시 정지
+    if (!mapEventManager.isRouletteSpinning()) {
+      horses.forEach((h) => h.update());
+    }
     updateSystem();
 
     // 발굽 소리 (부하 최소화: 랜덤으로 달리는 말 중 1마리만)

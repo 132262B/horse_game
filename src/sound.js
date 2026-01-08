@@ -296,3 +296,80 @@ export function playHoofSound(volume = 0.04) {
   osc.start();
   osc.stop(ctx.currentTime + 0.05);
 }
+
+/**
+ * 룰렛 회전 틱 사운드 (딸깍)
+ */
+export function playRouletteTickSound() {
+  if (isMuted) return;
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'square';
+  osc.frequency.value = 800 + Math.random() * 200;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.05);
+}
+
+/**
+ * 룰렛 시작 사운드 (드럼롤 느낌)
+ */
+export function playRouletteStartSound() {
+  if (isMuted) return;
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  // 상승하는 톤
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(200, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.5);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.5);
+}
+
+/**
+ * 룰렛 결과 사운드 (팡파레)
+ */
+export function playRouletteResultSound() {
+  if (isMuted) return;
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  // 팡파레 효과 (3개의 음)
+  const notes = [523, 659, 784]; // C5, E5, G5
+  notes.forEach((freq, i) => {
+    setTimeout(() => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    }, i * 100);
+  });
+}

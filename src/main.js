@@ -482,16 +482,13 @@ function executeTeleportEvent(config) {
 
   addLog(config.message);
 
-  // 현재 위치들 저장
-  const positions = activeHorses.map(h => ({
-    x: h.mesh.position.x,
-    z: h.mesh.position.z,
-  }));
+  // Z 위치만 저장 (레인 X 위치는 유지)
+  const zPositions = activeHorses.map(h => h.mesh.position.z);
 
-  // 위치 배열 셔플 (Fisher-Yates)
-  for (let i = positions.length - 1; i > 0; i--) {
+  // Z 위치 배열 셔플 (Fisher-Yates)
+  for (let i = zPositions.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [positions[i], positions[j]] = [positions[j], positions[i]];
+    [zPositions[i], zPositions[j]] = [zPositions[j], zPositions[i]];
   }
 
   // 사라지는 이펙트 + 사운드
@@ -509,9 +506,8 @@ function executeTeleportEvent(config) {
   setTimeout(() => {
     activeHorses.forEach((horse, index) => {
       setTimeout(() => {
-        // 새 위치로 이동 (X, Z만 변경, Y는 유지)
-        horse.mesh.position.x = positions[index].x;
-        horse.mesh.position.z = positions[index].z;
+        // Z 위치만 변경 (X는 자신의 레인 유지)
+        horse.mesh.position.z = zPositions[index];
         
         // 나타나는 이펙트
         createTeleportEffect(horse.mesh.position.clone(), false);
@@ -1398,6 +1394,65 @@ function startCountdown(callback) {
   showNext();
 }
 
+// 참가자 수 카운터 업데이트 함수
+function updateParticipantCount() {
+  const input = document.getElementById('names').value;
+  const names = input
+    .split('\n')
+    .map((n) => n.trim())
+    .filter((n) => n);
+  
+  const { MAX_LANES } = getLaneConfig();
+  const currentCountEl = document.getElementById('current-count');
+  const counterEl = document.getElementById('participant-counter');
+  
+  currentCountEl.textContent = names.length;
+  
+  // 최대 인원 초과시 빨간색으로 표시
+  if (names.length > MAX_LANES) {
+    counterEl.style.color = '#ff6b6b';
+  } else if (names.length < 2) {
+    counterEl.style.color = '#ffaa00';
+  } else {
+    counterEl.style.color = '#4caf50';
+  }
+  
+  return names;
+}
+
+// textarea 입력 이벤트 리스너
+const namesTextarea = document.getElementById('names');
+namesTextarea.addEventListener('input', (e) => {
+  const { MAX_LANES } = getLaneConfig();
+  const names = updateParticipantCount();
+  
+  // 20명 초과시 마지막 줄 입력 차단
+  if (names.length > MAX_LANES) {
+    const lines = e.target.value.split('\n');
+    const validLines = [];
+    let count = 0;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) {
+        if (count < MAX_LANES) {
+          validLines.push(line);
+          count++;
+        }
+      } else {
+        validLines.push(line); // 빈 줄은 유지
+      }
+    }
+    
+    e.target.value = validLines.join('\n');
+    updateParticipantCount();
+  }
+});
+
+// 초기 카운트 설정
+document.getElementById('max-count').textContent = getLaneConfig().MAX_LANES;
+updateParticipantCount();
+
 document.getElementById('startBtn').addEventListener('click', () => {
   const input = document.getElementById('names').value;
   let names = input
@@ -1421,6 +1476,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
   createFinishLine();
   createStartLine();
   createBillboard();
+  createSpectators(); // 트랙 너비에 맞게 관중 재생성
 
   names.forEach((name, i) => horses.push(new Horse3D(name, i, names.length)));
 

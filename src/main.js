@@ -1449,8 +1449,38 @@ namesTextarea.addEventListener('input', (e) => {
   }
 });
 
+// URL 쿼리 파라미터에서 말 이름 가져오기
+function getHorseNamesFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const queryData = params.get('query');
+
+  if (!queryData) return null;
+
+  try {
+    // base64 디코딩 (한글 지원을 위해 decodeURIComponent + atob 사용)
+    const decoded = decodeURIComponent(
+      atob(queryData)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    // || 로 스플릿
+    const names = decoded.split('||').map(n => n.trim()).filter(n => n);
+    return names.length >= 2 ? names : null;
+  } catch (e) {
+    console.error('Failed to decode query parameter:', e);
+    return null;
+  }
+}
+
 // 초기 카운트 설정
 document.getElementById('max-count').textContent = getLaneConfig().MAX_LANES;
+
+// URL 쿼리에서 이름 가져오기
+const queryNames = getHorseNamesFromQuery();
+if (queryNames) {
+  document.getElementById('names').value = queryNames.join('\n');
+}
 updateParticipantCount();
 
 document.getElementById('startBtn').addEventListener('click', () => {

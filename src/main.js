@@ -1502,6 +1502,15 @@ document.getElementById('startBtn').addEventListener('click', () => {
 
   document.getElementById('setup-box').style.display = 'none';
 
+  // URL에 현재 참가자 정보 저장 (다시하기 시 유지)
+  const joined = names.join('||');
+  const encoded = btoa(
+    encodeURIComponent(joined)
+      .replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16)))
+  );
+  const newUrl = `${window.location.origin}${window.location.pathname}?query=${encoded}`;
+  window.history.replaceState({}, '', newUrl);
+
   createTrack(names.length);
   createFinishLine();
   createStartLine();
